@@ -126,15 +126,28 @@ docker-compose up -d --build
 ### 环境变量
 
 在Coolify中添加以下环境变量：
+
+#### GRVT配置
 ```
-GRVT_TRADING_ACCOUNT_ID=你的值
-GRVT_PRIVATE_KEY=你的值
-GRVT_API_KEY=你的值
+GRVT_TRADING_ACCOUNT_ID=你的交易账户ID
+GRVT_PRIVATE_KEY=0x你的私钥
+GRVT_API_KEY=你的API密钥
 GRVT_ENVIRONMENT=prod
-LIGHTER_ACCOUNT_INDEX=你的值
-LIGHTER_API_KEY_INDEX=你的值
-API_KEY_PRIVATE_KEY=你的值
 ```
+
+#### Lighter配置
+```
+LIGHTER_ACCOUNT_INDEX=你的账户索引（获取方法见下方）
+LIGHTER_API_KEY_INDEX=4（通常是4）
+API_KEY_PRIVATE_KEY=你的Lighter API私钥（hex字符串，无0x前缀）
+```
+
+**如何获取 LIGHTER_ACCOUNT_INDEX**:
+1. 访问: `https://mainnet.zklighter.elliot.ai/api/v1/account?by=l1_address&value=YOUR_WALLET_ADDRESS`
+2. 将 `YOUR_WALLET_ADDRESS` 替换为你的钱包地址
+3. 在返回结果中找到 `account_index`
+   - 短的数字是主账户
+   - 长的数字是子账户
 
 ### Health Check
 
