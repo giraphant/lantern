@@ -636,13 +636,24 @@ class HedgeBot:
         return contract_id, tick_size
 
     async def fetch_grvt_bbo_prices(self) -> Tuple[Decimal, Decimal]:
-        """Fetch best bid/ask prices from GRVT using REST API."""
+        """Fetch best bid/ask prices from GRVT using REST API with timeout."""
         if not self.grvt_client:
             raise Exception("GRVT client not initialized")
 
-        best_bid, best_ask = await self.grvt_client.fetch_bbo_prices(self.grvt_contract_id)
-
-        return best_bid, best_ask
+        try:
+            best_bid, best_ask = await asyncio.wait_for(
+                self.grvt_client.fetch_bbo_prices(self.grvt_contract_id),
+                timeout=10.0  # 10 second timeout for price fetch
+            )
+            return best_bid, best_ask
+        except asyncio.TimeoutError:
+            self.logger.warning("⚠️ Fetching BBO prices timed out, retrying...")
+            # Retry once
+            best_bid, best_ask = await asyncio.wait_for(
+                self.grvt_client.fetch_bbo_prices(self.grvt_contract_id),
+                timeout=10.0
+            )
+            return best_bid, best_ask
 
     def round_to_tick(self, price: Decimal) -> Decimal:
         """Round price to tick size."""
@@ -651,17 +662,23 @@ class HedgeBot:
         return (price / self.grvt_tick_size).quantize(Decimal('1')) * self.grvt_tick_size
 
     async def place_bbo_order(self, side: str, quantity: Decimal):
-        # Place the order using GRVT client
-        order_result = await self.grvt_client.place_open_order(
-            contract_id=self.grvt_contract_id,
-            quantity=quantity,
-            direction=side.lower()
-        )
+        # Place the order using GRVT client with timeout
+        try:
+            order_result = await asyncio.wait_for(
+                self.grvt_client.place_open_order(
+                    contract_id=self.grvt_contract_id,
+                    quantity=quantity,
+                    direction=side.lower()
+                ),
+                timeout=30.0  # 30 second timeout for order placement
+            )
 
-        if order_result.success:
-            return order_result.order_id, order_result.price
-        else:
-            raise Exception(f"Failed to place order: {order_result.error_message}")
+            if order_result.success:
+                return order_result.order_id, order_result.price
+            else:
+                raise Exception(f"Failed to place order: {order_result.error_message}")
+        except asyncio.TimeoutError:
+            raise Exception("Order placement timed out after 30 seconds")
 
     async def place_grvt_post_only_order(self, side: str, quantity: Decimal):
         """Place a post-only order on GRVT."""
