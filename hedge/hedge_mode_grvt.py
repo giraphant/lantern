@@ -663,6 +663,8 @@ class HedgeBot:
 
     async def place_bbo_order(self, side: str, quantity: Decimal):
         # Place the order using GRVT client with timeout
+        self.logger.info(f"📤 Sending order to GRVT API: {side} {quantity} @ contract {self.grvt_contract_id}")
+
         try:
             order_result = await asyncio.wait_for(
                 self.grvt_client.place_open_order(
@@ -674,11 +676,18 @@ class HedgeBot:
             )
 
             if order_result.success:
+                self.logger.info(f"✅ Order placed successfully: ID={order_result.order_id}, Price={order_result.price}")
                 return order_result.order_id, order_result.price
             else:
+                self.logger.error(f"❌ Order placement failed: {order_result.error_message}")
                 raise Exception(f"Failed to place order: {order_result.error_message}")
         except asyncio.TimeoutError:
+            self.logger.error("❌ Order placement timed out after 30 seconds")
             raise Exception("Order placement timed out after 30 seconds")
+        except Exception as e:
+            self.logger.error(f"❌ Exception during order placement: {e}")
+            self.logger.error(f"   Traceback: {traceback.format_exc()}")
+            raise
 
     async def place_grvt_post_only_order(self, side: str, quantity: Decimal):
         """Place a post-only order on GRVT."""
@@ -1155,13 +1164,57 @@ class HedgeBot:
         self.logger.info(f"Cycles: {self.cycles}")
         self.logger.info(f"Build-up Iterations: {self.build_up_iterations}")
         self.logger.info(f"Hold Time: {self.hold_time}s ({self.hold_time/60:.1f} min)")
+        self.logger.info(f"Direction: {self.direction}")
         self.logger.info(f"Strategy: Build-up → Hold → Wind-down → Repeat")
         self.logger.info("=" * 20)
 
+        # Validate environment variables before starting
+        self.logger.info("🔍 Validating environment variables...")
+        env_errors = []
+
+        required_env_vars = {
+            'GRVT': ['GRVT_TRADING_ACCOUNT_ID', 'GRVT_PRIVATE_KEY', 'GRVT_API_KEY'],
+            'Lighter': ['LIGHTER_PRIVATE_KEY', 'LIGHTER_ACCOUNT_INDEX', 'LIGHTER_API_KEY_INDEX']
+        }
+
+        for exchange, vars in required_env_vars.items():
+            for var in vars:
+                value = os.getenv(var)
+                if not value:
+                    env_errors.append(f"❌ {var} is not set")
+                    self.logger.error(f"❌ Missing environment variable: {var}")
+                else:
+                    # Mask sensitive values
+                    if 'KEY' in var or 'PRIVATE' in var:
+                        masked = value[:6] + '...' + value[-4:] if len(value) > 10 else '***'
+                        self.logger.info(f"✅ {var} = {masked}")
+                    else:
+                        self.logger.info(f"✅ {var} = {value}")
+
+        if env_errors:
+            self.logger.error("=" * 60)
+            self.logger.error("❌ Environment validation failed!")
+            for error in env_errors:
+                self.logger.error(f"   {error}")
+            self.logger.error("=" * 60)
+            raise Exception("Missing required environment variables")
+
+        self.logger.info("✅ All environment variables validated")
+        self.logger.info("=" * 60)
+
         # Initialize clients
+        self.logger.info("🔧 Initializing exchange clients...")
         try:
             self.initialize_lighter_client()
+            self.logger.info("✅ Lighter client initialized")
+        except Exception as e:
+            self.logger.error(f"❌ Failed to initialize Lighter client: {e}")
+            self.logger.error(f"   Traceback: {traceback.format_exc()}")
+            raise
+
+        try:
             self.initialize_grvt_client()
+            self.logger.info("✅ GRVT client initialized")
 
             # Get contract info
             self.grvt_contract_id, self.grvt_tick_size = await self.get_grvt_contract_info()
