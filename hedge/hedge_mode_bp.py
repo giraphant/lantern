@@ -503,9 +503,10 @@ class HedgeBot:
     def initialize_lighter_client(self):
         """Initialize the Lighter client."""
         if self.lighter_client is None:
-            api_key_private_key = os.getenv('API_KEY_PRIVATE_KEY')
+            # Support both new (LIGHTER_PRIVATE_KEY) and old (API_KEY_PRIVATE_KEY) names
+            api_key_private_key = os.getenv('LIGHTER_PRIVATE_KEY') or os.getenv('API_KEY_PRIVATE_KEY')
             if not api_key_private_key:
-                raise Exception("API_KEY_PRIVATE_KEY environment variable not set")
+                raise Exception("LIGHTER_PRIVATE_KEY (or API_KEY_PRIVATE_KEY) environment variable not set")
 
             self.lighter_client = SignerClient(
                 url=self.lighter_base_url,
