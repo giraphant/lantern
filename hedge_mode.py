@@ -52,6 +52,7 @@ Environment Variables (can be used instead of command-line arguments):
     BUILD_UP_ITERATIONS - Number of iterations to build up position
     HOLD_TIME - Time in seconds to hold position (default: 0)
     CYCLES - Number of build-hold-winddown cycles (default: 1)
+    DIRECTION - Trading direction: long, short, or random (default: long)
         """
     )
 
@@ -91,6 +92,9 @@ Environment Variables (can be used instead of command-line arguments):
     parser.add_argument('--cycles', type=int,
                         default=int(os.getenv('CYCLES')) if os.getenv('CYCLES') else None,
                         help='Number of build-hold-winddown cycles to run (default: 1)')
+    parser.add_argument('--direction', type=str,
+                        default=os.getenv('DIRECTION', 'long'),
+                        help='Trading direction: long (GRVT buy), short (GRVT sell), or random (default: long)')
     parser.add_argument('--env-file', type=str, default=".env",
                         help=".env file path (default: .env)")
 
@@ -177,7 +181,8 @@ async def main():
             auto_rebalance=not args.no_auto_rebalance,
             build_up_iterations=args.build_up_iterations,
             hold_time=args.hold_time,
-            cycles=args.cycles
+            cycles=args.cycles,
+            direction=args.direction
         )
 
         # Run the bot

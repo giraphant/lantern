@@ -36,7 +36,8 @@ class HedgeBot:
     def __init__(self, ticker: str, order_quantity: Decimal, fill_timeout: int = 5, iterations: int = 20,
                  price_tolerance_ticks: int = 3, min_order_lifetime: int = 30,
                  rebalance_threshold: Decimal = Decimal('0.15'), auto_rebalance: bool = True,
-                 build_up_iterations: int = None, hold_time: int = 0, cycles: int = None):
+                 build_up_iterations: int = None, hold_time: int = 0, cycles: int = None,
+                 direction: str = 'long'):
         self.ticker = ticker
         self.order_quantity = order_quantity
         self.fill_timeout = fill_timeout
@@ -60,6 +61,11 @@ class HedgeBot:
         self.build_up_iterations = build_up_iterations if build_up_iterations else iterations
         self.hold_time = hold_time
         self.cycles = cycles if cycles else 1
+
+        # Direction parameter (long, short, or random)
+        self.direction = direction.lower()
+        if self.direction not in ['long', 'short', 'random']:
+            raise ValueError(f"Invalid direction: {direction}. Must be 'long', 'short', or 'random'")
 
         # Initialize logging to file
         os.makedirs("logs", exist_ok=True)
@@ -1196,7 +1202,19 @@ class HedgeBot:
             self.logger.info("=" * 60)
 
             # Phase 1: Build-up (累积仓位)
-            self.logger.info(f"📈 PHASE 1: Building up position ({self.build_up_iterations} iterations)")
+            # Determine build-up direction for this cycle
+            import random
+            if self.direction == 'random':
+                cycle_direction = random.choice(['long', 'short'])
+            else:
+                cycle_direction = self.direction
+
+            build_side = 'buy' if cycle_direction == 'long' else 'sell'
+            direction_emoji = '📈' if cycle_direction == 'long' else '📉'
+
+            self.logger.info(f"{direction_emoji} PHASE 1: Building up {cycle_direction.upper()} position ({self.build_up_iterations} iterations)")
+            self.logger.info(f"   GRVT will {build_side.upper()}, Lighter will hedge opposite")
+
             for iteration in range(self.build_up_iterations):
                 if self.stop_flag:
                     break
@@ -1219,11 +1237,11 @@ class HedgeBot:
                         self.logger.error(f"❌ Position diff too large. Stopping.")
                         break
 
-                # Place GRVT buy order
+                # Place GRVT order with cycle direction
                 self.order_execution_complete = False
                 self.waiting_for_lighter_fill = False
                 try:
-                    await self.place_grvt_post_only_order('buy', self.order_quantity)
+                    await self.place_grvt_post_only_order(build_side, self.order_quantity)
                 except Exception as e:
                     self.logger.error(f"⚠️ Error placing GRVT order: {e}")
                     self.logger.error(f"⚠️ Full traceback: {traceback.format_exc()}")

@@ -29,6 +29,7 @@ services:
       - BUILD_UP_ITERATIONS=${BUILD_UP_ITERATIONS:-30}
       - HOLD_TIME=${HOLD_TIME:-1800}
       - CYCLES=${CYCLES:-999999}
+      - DIRECTION=${DIRECTION:-long}
 
       # Advanced Parameters
       - PRICE_TOLERANCE=${PRICE_TOLERANCE:-3}
