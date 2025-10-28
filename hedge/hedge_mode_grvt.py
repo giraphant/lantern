@@ -692,9 +692,9 @@ class HedgeBot:
     async def check_and_cancel_excess_orders(self):
         """Check for excess open orders and cancel all if found."""
         try:
-            # Fetch all open orders from GRVT
+            # Fetch all active orders from GRVT
             open_orders = await asyncio.wait_for(
-                self.grvt_client.get_open_orders(),
+                self.grvt_client.get_active_orders(self.grvt_contract_id),
                 timeout=10.0
             )
 
@@ -703,12 +703,12 @@ class HedgeBot:
 
             # Calculate total open order quantity
             total_open_qty = Decimal('0')
-            order_count = 0
+            order_count = len(open_orders)
+
             for order in open_orders:
-                if order.get('contract_id') == self.grvt_contract_id:
-                    remaining_qty = Decimal(str(order.get('quantity', 0))) - Decimal(str(order.get('filled_quantity', 0)))
-                    total_open_qty += remaining_qty
-                    order_count += 1
+                # OrderInfo object has quantity and filled_quantity attributes
+                remaining_qty = order.quantity - order.filled_quantity
+                total_open_qty += remaining_qty
 
             self.logger.info(f"📊 Open orders check: {order_count} orders, total quantity: {total_open_qty}")
 
@@ -719,13 +719,11 @@ class HedgeBot:
 
                 # Cancel all orders
                 for order in open_orders:
-                    if order.get('contract_id') == self.grvt_contract_id:
-                        try:
-                            order_id = order.get('order_id')
-                            self.logger.info(f"   Canceling order {order_id}")
-                            await self.grvt_client.cancel_order(order_id)
-                        except Exception as e:
-                            self.logger.error(f"   Failed to cancel order {order_id}: {e}")
+                    try:
+                        self.logger.info(f"   Canceling order {order.order_id}")
+                        await self.grvt_client.cancel_order(order.order_id)
+                    except Exception as e:
+                        self.logger.error(f"   Failed to cancel order {order.order_id}: {e}")
 
                 # Wait a bit for cancellations to process
                 await asyncio.sleep(2)
