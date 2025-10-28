@@ -1290,14 +1290,13 @@ class HedgeBot:
 
             if self.lighter_order_book_ready:
                 self.logger.info("✅ Lighter WebSocket order book data received")
+            else:
+                self.logger.warning("⚠️ Lighter WebSocket order book not ready")
 
             # Sync initial positions from API
             self.logger.info("📊 Syncing initial positions from exchanges...")
             await self.sync_positions_from_api()
             self.logger.info(f"   Starting positions - GRVT: {self.grvt_position} | Lighter: {self.lighter_position}")
-
-            else:
-                self.logger.warning("⚠️ Lighter WebSocket order book not ready")
 
         except Exception as e:
             self.logger.error(f"❌ Failed to setup Lighter websocket: {e}")
