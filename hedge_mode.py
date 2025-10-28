@@ -94,7 +94,7 @@ Environment Variables (can be used instead of command-line arguments):
                         help='Number of build-hold-winddown cycles to run (default: 1)')
     parser.add_argument('--direction', type=str,
                         default=os.getenv('DIRECTION', 'long'),
-                        help='Trading direction: long (GRVT buy), short (GRVT sell), or random (default: long)')
+                        help='Lighter direction: long (Lighter buy), short (Lighter sell), or random (default: long)')
     parser.add_argument('--env-file', type=str, default=".env",
                         help=".env file path (default: .env)")
 
