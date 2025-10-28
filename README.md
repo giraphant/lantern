@@ -346,7 +346,7 @@ python hedge_mode.py --exchange grvt --ticker BTC --size 1 \
 
 #### Lighter 配置
 
-- `API_KEY_PRIVATE_KEY`: Lighter API 私钥
+- `LIGHTER_PRIVATE_KEY`: Lighter API 私钥
 - `LIGHTER_ACCOUNT_INDEX`: Lighter 账户索引
 - `LIGHTER_API_KEY_INDEX`: Lighter API 密钥索引
 

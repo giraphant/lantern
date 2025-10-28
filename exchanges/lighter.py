@@ -35,13 +35,14 @@ class LighterClient(BaseExchangeClient):
         super().__init__(config)
 
         # Lighter credentials from environment
-        self.api_key_private_key = os.getenv('API_KEY_PRIVATE_KEY')
+        # Support both new (LIGHTER_PRIVATE_KEY) and old (API_KEY_PRIVATE_KEY) names
+        self.api_key_private_key = os.getenv('LIGHTER_PRIVATE_KEY') or os.getenv('API_KEY_PRIVATE_KEY')
         self.account_index = int(os.getenv('LIGHTER_ACCOUNT_INDEX', '0'))
         self.api_key_index = int(os.getenv('LIGHTER_API_KEY_INDEX', '0'))
         self.base_url = "https://mainnet.zklighter.elliot.ai"
 
         if not self.api_key_private_key:
-            raise ValueError("API_KEY_PRIVATE_KEY must be set in environment variables")
+            raise ValueError("LIGHTER_PRIVATE_KEY (or API_KEY_PRIVATE_KEY) must be set in environment variables")
 
         # Initialize logger
         self.logger = TradingLogger(exchange="lighter", ticker=self.config.ticker, log_to_console=False)
@@ -62,8 +63,19 @@ class LighterClient(BaseExchangeClient):
 
     def _validate_config(self) -> None:
         """Validate Lighter configuration."""
-        required_env_vars = ['API_KEY_PRIVATE_KEY', 'LIGHTER_ACCOUNT_INDEX', 'LIGHTER_API_KEY_INDEX']
-        missing_vars = [var for var in required_env_vars if not os.getenv(var)]
+        # Check for new or old env var names
+        has_private_key = os.getenv('LIGHTER_PRIVATE_KEY') or os.getenv('API_KEY_PRIVATE_KEY')
+        has_account_index = os.getenv('LIGHTER_ACCOUNT_INDEX')
+        has_api_key_index = os.getenv('LIGHTER_API_KEY_INDEX')
+
+        missing_vars = []
+        if not has_private_key:
+            missing_vars.append('LIGHTER_PRIVATE_KEY')
+        if not has_account_index:
+            missing_vars.append('LIGHTER_ACCOUNT_INDEX')
+        if not has_api_key_index:
+            missing_vars.append('LIGHTER_API_KEY_INDEX')
+
         if missing_vars:
             raise ValueError(f"Missing required environment variables: {missing_vars}")
 

@@ -139,7 +139,7 @@ GRVT_ENVIRONMENT=prod
 ```
 LIGHTER_ACCOUNT_INDEX=你的账户索引（获取方法见下方）
 LIGHTER_API_KEY_INDEX=4（通常是4）
-API_KEY_PRIVATE_KEY=你的Lighter API私钥（hex字符串，无0x前缀）
+LIGHTER_PRIVATE_KEY=你的Lighter API私钥（hex字符串，无0x前缀）
 ```
 
 **如何获取 LIGHTER_ACCOUNT_INDEX**:
