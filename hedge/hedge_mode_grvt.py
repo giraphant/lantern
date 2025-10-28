@@ -983,11 +983,39 @@ class HedgeBot:
                 timeout=10.0
             )
 
-            # Fetch Lighter position
-            lighter_pos = await asyncio.wait_for(
-                self.lighter_client.get_account_positions(),
-                timeout=10.0
-            )
+            # Fetch Lighter position using REST API (no private key needed)
+            lighter_account_index = os.getenv('LIGHTER_ACCOUNT_INDEX')
+            if not lighter_account_index:
+                self.logger.warning("⚠️ LIGHTER_ACCOUNT_INDEX not set, cannot sync Lighter position")
+                return
+
+            import aiohttp
+            url = f"https://mainnet.zklighter.elliot.ai/api/v1/account?by=account_index&value={lighter_account_index}"
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                    if response.status != 200:
+                        self.logger.warning(f"⚠️ Lighter API returned status {response.status}")
+                        return
+
+                    data = await response.json()
+                    accounts = data.get('accounts', [])
+
+                    if not accounts:
+                        self.logger.warning("⚠️ No accounts found in Lighter API response")
+                        return
+
+                    account = accounts[0]
+                    positions = account.get('positions', [])
+
+                    # Find position for our market
+                    lighter_pos = Decimal('0')
+                    for position in positions:
+                        if position.get('market_id') == self.lighter_market_index:
+                            pos_size = Decimal(str(position.get('position', 0)))
+                            sign = position.get('sign', 1)
+                            lighter_pos = pos_size * sign
+                            break
 
             # Update local cache
             old_grvt = self.grvt_position
