@@ -22,12 +22,13 @@ Cross-platform compatibility:
 import asyncio
 import sys
 import argparse
+import os
 from decimal import Decimal
 from pathlib import Path
 import dotenv
 
 def parse_arguments():
-    """Parse command line arguments."""
+    """Parse command line arguments with environment variable fallbacks."""
     parser = argparse.ArgumentParser(
         description='Hedge Mode Trading Bot Entry Point',
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -37,37 +38,73 @@ Examples:
     python hedge_mode.py --exchange extended --ticker ETH --size 0.1 --iter 5
     python hedge_mode.py --exchange apex --ticker BTC --size 0.002 --iter 10
     python hedge_mode.py --exchange grvt --ticker BTC --size 0.05 --iter 10
+
+Environment Variables (can be used instead of command-line arguments):
+    EXCHANGE - Exchange to use (backpack, extended, apex, or grvt)
+    TICKER - Ticker symbol (default: BTC)
+    SIZE - Number of tokens to buy/sell per order
+    ITERATIONS - Number of iterations to run
+    FILL_TIMEOUT - Timeout in seconds for maker order fills (default: 5)
+    PRICE_TOLERANCE - Price tolerance in ticks (default: 3)
+    MIN_ORDER_LIFETIME - Minimum order lifetime in seconds (default: 30)
+    REBALANCE_THRESHOLD - Position imbalance threshold (default: 0.15)
+    AUTO_REBALANCE - Enable auto-rebalance (default: true)
+    BUILD_UP_ITERATIONS - Number of iterations to build up position
+    HOLD_TIME - Time in seconds to hold position (default: 0)
+    CYCLES - Number of build-hold-winddown cycles (default: 1)
         """
     )
-    
-    parser.add_argument('--exchange', type=str, required=True,
+
+    parser.add_argument('--exchange', type=str,
+                        default=os.getenv('EXCHANGE'),
                         help='Exchange to use (backpack, extended, apex, or grvt)')
-    parser.add_argument('--ticker', type=str, default='BTC',
+    parser.add_argument('--ticker', type=str,
+                        default=os.getenv('TICKER', 'BTC'),
                         help='Ticker symbol (default: BTC)')
-    parser.add_argument('--size', type=str, required=True,
+    parser.add_argument('--size', type=str,
+                        default=os.getenv('SIZE'),
                         help='Number of tokens to buy/sell per order')
-    parser.add_argument('--iter', type=int, required=True,
+    parser.add_argument('--iter', type=int,
+                        default=int(os.getenv('ITERATIONS')) if os.getenv('ITERATIONS') else None,
                         help='Number of iterations to run')
-    parser.add_argument('--fill-timeout', type=int, default=5,
+    parser.add_argument('--fill-timeout', type=int,
+                        default=int(os.getenv('FILL_TIMEOUT', '5')),
                         help='Timeout in seconds for maker order fills (default: 5)')
-    parser.add_argument('--price-tolerance', type=int, default=3,
+    parser.add_argument('--price-tolerance', type=int,
+                        default=int(os.getenv('PRICE_TOLERANCE', '3')),
                         help='Price tolerance in ticks before canceling order (default: 3)')
-    parser.add_argument('--min-order-lifetime', type=int, default=30,
+    parser.add_argument('--min-order-lifetime', type=int,
+                        default=int(os.getenv('MIN_ORDER_LIFETIME', '30')),
                         help='Minimum order lifetime in seconds before considering cancellation (default: 30)')
-    parser.add_argument('--rebalance-threshold', type=float, default=0.15,
+    parser.add_argument('--rebalance-threshold', type=float,
+                        default=float(os.getenv('REBALANCE_THRESHOLD', '0.15')),
                         help='Position imbalance threshold before triggering rebalance (default: 0.15)')
     parser.add_argument('--no-auto-rebalance', action='store_true',
+                        default=os.getenv('AUTO_REBALANCE', 'true').lower() == 'false',
                         help='Disable automatic position rebalancing (default: enabled)')
-    parser.add_argument('--build-up-iterations', type=int, default=None,
+    parser.add_argument('--build-up-iterations', type=int,
+                        default=int(os.getenv('BUILD_UP_ITERATIONS')) if os.getenv('BUILD_UP_ITERATIONS') else None,
                         help='Number of iterations to build up position before holding (default: same as --iter)')
-    parser.add_argument('--hold-time', type=int, default=0,
+    parser.add_argument('--hold-time', type=int,
+                        default=int(os.getenv('HOLD_TIME', '0')),
                         help='Time in seconds to hold position (default: 0, e.g., 1800 for 30 min)')
-    parser.add_argument('--cycles', type=int, default=None,
+    parser.add_argument('--cycles', type=int,
+                        default=int(os.getenv('CYCLES')) if os.getenv('CYCLES') else None,
                         help='Number of build-hold-winddown cycles to run (default: 1)')
     parser.add_argument('--env-file', type=str, default=".env",
                         help=".env file path (default: .env)")
 
-    return parser.parse_args()
+    args = parser.parse_args()
+
+    # Validate required arguments
+    if not args.exchange:
+        parser.error("--exchange is required (or set EXCHANGE environment variable)")
+    if not args.size:
+        parser.error("--size is required (or set SIZE environment variable)")
+    if args.iter is None:
+        parser.error("--iter is required (or set ITERATIONS environment variable)")
+
+    return args
 
 
 def validate_exchange(exchange):

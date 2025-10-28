@@ -52,9 +52,35 @@ docker rm lantern
 
 ## ⚙️ 自定义参数
 
-### 方法1: 修改 docker-compose.yml
+**推荐方式**: 使用环境变量来配置参数（支持Coolify等平台直接在网页修改）
 
-在 `docker-compose.yml` 中取消注释并修改 `command` 部分：
+所有交易参数都可以通过环境变量配置，在 `.env` 文件中添加以下参数：
+
+```bash
+# 基础交易参数
+EXCHANGE=grvt              # 交易所 (grvt/apex/backpack/extended)
+TICKER=HYPE                # 交易对
+SIZE=10                    # 每笔订单数量
+ITERATIONS=20              # 迭代次数
+
+# 循环模式参数
+BUILD_UP_ITERATIONS=30     # 累积阶段订单数
+HOLD_TIME=1800             # 持有时间(秒, 1800=30分钟)
+CYCLES=999999              # 循环次数
+
+# 高级参数
+PRICE_TOLERANCE=3          # 价格容忍度(tick数)
+MIN_ORDER_LIFETIME=30      # 最小订单存活时间(秒)
+REBALANCE_THRESHOLD=0.15   # 仓位不平衡阈值
+AUTO_REBALANCE=true        # 自动仓位校准
+FILL_TIMEOUT=5             # 订单填充超时(秒)
+```
+
+修改环境变量后重启容器即可生效。
+
+### 备选方法: 命令行参数
+
+如果你更喜欢用命令行参数，可以在 docker-compose.yml 中添加 `command` 部分：
 
 ```yaml
 command: >
@@ -67,22 +93,7 @@ command: >
   --cycles 24
 ```
 
-### 方法2: 直接在 docker run 中指定
-
-```bash
-docker run -d \
-  --name lantern \
-  --env-file .env \
-  -v $(pwd)/logs:/app/logs \
-  lantern-hedge-bot \
-  python3 hedge_mode.py \
-  --exchange grvt \
-  --ticker BTC \
-  --size 0.05 \
-  --build-up-iterations 30 \
-  --hold-time 3600 \
-  --cycles 24
-```
+注意：环境变量会被命令行参数覆盖（如果同时使用）。
 
 ## 📊 查看日志
 
@@ -123,11 +134,11 @@ docker-compose up -d --build
 - **Port**: 留空（不是Web服务）
 - **Is it a static site?**: 否
 
-### 环境变量
+### 环境变量配置
 
-在Coolify中添加以下环境变量：
+在Coolify的环境变量页面添加以下配置。所有参数都可以在网页上直接修改，无需重新构建代码。
 
-#### GRVT配置
+#### 1. GRVT配置 (必填)
 ```
 GRVT_TRADING_ACCOUNT_ID=你的交易账户ID
 GRVT_PRIVATE_KEY=0x你的私钥
@@ -135,18 +146,47 @@ GRVT_API_KEY=你的API密钥
 GRVT_ENVIRONMENT=prod
 ```
 
-#### Lighter配置
+#### 2. Lighter配置 (必填)
 ```
-LIGHTER_ACCOUNT_INDEX=你的账户索引（获取方法见下方）
-LIGHTER_API_KEY_INDEX=4（通常是4）
-LIGHTER_PRIVATE_KEY=你的Lighter API私钥（hex字符串，无0x前缀）
+LIGHTER_ACCOUNT_INDEX=你的账户索引
+LIGHTER_API_KEY_INDEX=4
+LIGHTER_PRIVATE_KEY=你的Lighter API私钥
 ```
 
 **如何获取 LIGHTER_ACCOUNT_INDEX**:
 1. 访问: `https://mainnet.zklighter.elliot.ai/api/v1/account?by=l1_address&value=YOUR_WALLET_ADDRESS`
 2. 将 `YOUR_WALLET_ADDRESS` 替换为你的钱包地址
 3. 在返回结果中找到 `account_index`
-   - 短的数字是主账户
+
+#### 3. 交易参数 (必填)
+```
+EXCHANGE=grvt
+TICKER=HYPE
+SIZE=10
+ITERATIONS=20
+```
+
+#### 4. 循环模式参数 (推荐)
+```
+BUILD_UP_ITERATIONS=30
+HOLD_TIME=1800
+CYCLES=999999
+```
+
+#### 5. 高级参数 (可选，使用默认值)
+```
+PRICE_TOLERANCE=3
+MIN_ORDER_LIFETIME=30
+REBALANCE_THRESHOLD=0.15
+AUTO_REBALANCE=true
+FILL_TIMEOUT=5
+```
+
+### 优势
+
+✅ **网页修改参数**: 在Coolify界面修改环境变量后，只需重启容器即可生效，无需重新构建
+✅ **动态调整**: 随时调整 SIZE、TICKER、HOLD_TIME 等参数
+✅ **多实例管理**: 不同容器可以使用不同的参数配置
    - 长的数字是子账户
 
 ### Health Check

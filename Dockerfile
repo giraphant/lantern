@@ -17,5 +17,6 @@ COPY . .
 # Create logs directory
 RUN mkdir -p logs
 
-# Default command (can be overridden)
-CMD ["python3", "hedge_mode.py", "--exchange", "grvt", "--ticker", "HYPE", "--size", "1", "--build-up-iterations", "20", "--hold-time", "1800", "--cycles", "999999"]
+# Default command - parameters are read from environment variables
+# Set these in Coolify's environment variables section
+CMD ["python3", "hedge_mode.py"]

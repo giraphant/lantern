@@ -19,19 +19,24 @@ services:
       - LIGHTER_API_KEY_INDEX=${LIGHTER_API_KEY_INDEX}
       - LIGHTER_PRIVATE_KEY=${LIGHTER_PRIVATE_KEY}
 
+      # Trading Parameters
+      - EXCHANGE=${EXCHANGE:-grvt}
+      - TICKER=${TICKER:-HYPE}
+      - SIZE=${SIZE:-10}
+      - ITERATIONS=${ITERATIONS:-20}
+
+      # Cycle Mode Parameters
+      - BUILD_UP_ITERATIONS=${BUILD_UP_ITERATIONS:-30}
+      - HOLD_TIME=${HOLD_TIME:-1800}
+      - CYCLES=${CYCLES:-999999}
+
+      # Advanced Parameters
+      - PRICE_TOLERANCE=${PRICE_TOLERANCE:-3}
+      - MIN_ORDER_LIFETIME=${MIN_ORDER_LIFETIME:-30}
+      - REBALANCE_THRESHOLD=${REBALANCE_THRESHOLD:-0.15}
+      - AUTO_REBALANCE=${AUTO_REBALANCE:-true}
+      - FILL_TIMEOUT=${FILL_TIMEOUT:-5}
+
     # Mount logs directory to persist logs
     volumes:
       - ./logs:/app/logs
-
-    # Override default command with your parameters
-    # Uncomment and modify as needed:
-    # command: >
-    #   python3 hedge_mode.py
-    #   --exchange grvt
-    #   --ticker HYPE
-    #   --size 1
-    #   --build-up-iterations 20
-    #   --hold-time 1800
-    #   --cycles 24
-    #   --price-tolerance 3
-    #   --min-order-lifetime 30
