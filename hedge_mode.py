@@ -142,11 +142,13 @@ async def main():
     """Main entry point that creates and runs the appropriate hedge bot."""
     args = parse_arguments()
 
+    # Load .env file if it exists (optional in containerized environments)
     env_path = Path(args.env_file)
-    if not env_path.exists():
-        print(f"Env file not find: {env_path.resolve()}")
-        sys.exit(1)
-    dotenv.load_dotenv(args.env_file)
+    if env_path.exists():
+        dotenv.load_dotenv(args.env_file)
+        print(f"✓ Loaded environment from {args.env_file}")
+    else:
+        print(f"ℹ No .env file found at {args.env_file}, using system environment variables")
     
     # Validate exchange
     validate_exchange(args.exchange)
