@@ -689,10 +689,60 @@ class HedgeBot:
             self.logger.error(f"   Traceback: {traceback.format_exc()}")
             raise
 
+    async def check_and_cancel_excess_orders(self):
+        """Check for excess open orders and cancel all if found."""
+        try:
+            # Fetch all open orders from GRVT
+            open_orders = await asyncio.wait_for(
+                self.grvt_client.get_open_orders(),
+                timeout=10.0
+            )
+
+            if not open_orders:
+                return
+
+            # Calculate total open order quantity
+            total_open_qty = Decimal('0')
+            order_count = 0
+            for order in open_orders:
+                if order.get('contract_id') == self.grvt_contract_id:
+                    remaining_qty = Decimal(str(order.get('quantity', 0))) - Decimal(str(order.get('filled_quantity', 0)))
+                    total_open_qty += remaining_qty
+                    order_count += 1
+
+            self.logger.info(f"📊 Open orders check: {order_count} orders, total quantity: {total_open_qty}")
+
+            # If total open quantity exceeds our single order size, cancel all
+            if total_open_qty > self.order_quantity:
+                self.logger.error(f"⚠️ ALERT: Total open orders {total_open_qty} exceeds order size {self.order_quantity}")
+                self.logger.error(f"🚨 Canceling ALL {order_count} open orders to prevent accumulation")
+
+                # Cancel all orders
+                for order in open_orders:
+                    if order.get('contract_id') == self.grvt_contract_id:
+                        try:
+                            order_id = order.get('order_id')
+                            self.logger.info(f"   Canceling order {order_id}")
+                            await self.grvt_client.cancel_order(order_id)
+                        except Exception as e:
+                            self.logger.error(f"   Failed to cancel order {order_id}: {e}")
+
+                # Wait a bit for cancellations to process
+                await asyncio.sleep(2)
+
+        except asyncio.TimeoutError:
+            self.logger.warning("⚠️ Timeout checking open orders")
+        except Exception as e:
+            self.logger.error(f"❌ Error checking open orders: {e}")
+            self.logger.error(f"   Traceback: {traceback.format_exc()}")
+
     async def place_grvt_post_only_order(self, side: str, quantity: Decimal):
         """Place a post-only order on GRVT."""
         if not self.grvt_client:
             raise Exception("GRVT client not initialized")
+
+        # Check for excess orders before placing new one
+        await self.check_and_cancel_excess_orders()
 
         self.grvt_order_status = None
 
