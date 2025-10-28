@@ -50,9 +50,23 @@ Examples:
                         help='Number of iterations to run')
     parser.add_argument('--fill-timeout', type=int, default=5,
                         help='Timeout in seconds for maker order fills (default: 5)')
+    parser.add_argument('--price-tolerance', type=int, default=3,
+                        help='Price tolerance in ticks before canceling order (default: 3)')
+    parser.add_argument('--min-order-lifetime', type=int, default=30,
+                        help='Minimum order lifetime in seconds before considering cancellation (default: 30)')
+    parser.add_argument('--rebalance-threshold', type=float, default=0.15,
+                        help='Position imbalance threshold before triggering rebalance (default: 0.15)')
+    parser.add_argument('--no-auto-rebalance', action='store_true',
+                        help='Disable automatic position rebalancing (default: enabled)')
+    parser.add_argument('--build-up-iterations', type=int, default=None,
+                        help='Number of iterations to build up position before holding (default: same as --iter)')
+    parser.add_argument('--hold-time', type=int, default=0,
+                        help='Time in seconds to hold position (default: 0, e.g., 1800 for 30 min)')
+    parser.add_argument('--cycles', type=int, default=None,
+                        help='Number of build-hold-winddown cycles to run (default: 1)')
     parser.add_argument('--env-file', type=str, default=".env",
                         help=".env file path (default: .env)")
-    
+
     return parser.parse_args()
 
 
@@ -117,9 +131,16 @@ async def main():
             ticker=args.ticker.upper(),
             order_quantity=Decimal(args.size),
             fill_timeout=args.fill_timeout,
-            iterations=args.iter
+            iterations=args.iter,
+            price_tolerance_ticks=args.price_tolerance,
+            min_order_lifetime=args.min_order_lifetime,
+            rebalance_threshold=Decimal(str(args.rebalance_threshold)),
+            auto_rebalance=not args.no_auto_rebalance,
+            build_up_iterations=args.build_up_iterations,
+            hold_time=args.hold_time,
+            cycles=args.cycles
         )
-        
+
         # Run the bot
         await bot.run()
         

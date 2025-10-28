@@ -33,7 +33,10 @@ class Config:
 class HedgeBot:
     """Trading bot that places post-only orders on GRVT and hedges with market orders on Lighter."""
 
-    def __init__(self, ticker: str, order_quantity: Decimal, fill_timeout: int = 5, iterations: int = 20):
+    def __init__(self, ticker: str, order_quantity: Decimal, fill_timeout: int = 5, iterations: int = 20,
+                 price_tolerance_ticks: int = 3, min_order_lifetime: int = 30,
+                 rebalance_threshold: Decimal = Decimal('0.15'), auto_rebalance: bool = True,
+                 build_up_iterations: int = None, hold_time: int = 0, cycles: int = None):
         self.ticker = ticker
         self.order_quantity = order_quantity
         self.fill_timeout = fill_timeout
@@ -42,6 +45,21 @@ class HedgeBot:
         self.grvt_position = Decimal('0')
         self.lighter_position = Decimal('0')
         self.current_order = {}
+
+        # Price tolerance parameters
+        self.price_tolerance_ticks = price_tolerance_ticks
+        self.min_order_lifetime = min_order_lifetime
+
+        # Auto-rebalance parameters
+        self.rebalance_threshold = rebalance_threshold
+        self.auto_rebalance = auto_rebalance
+        self.rebalance_attempts = 0
+        self.max_rebalance_attempts = 3
+
+        # Cycle mode parameters
+        self.build_up_iterations = build_up_iterations if build_up_iterations else iterations
+        self.hold_time = hold_time
+        self.cycles = cycles if cycles else 1
 
         # Initialize logging to file
         os.makedirs("logs", exist_ok=True)
@@ -141,11 +159,16 @@ class HedgeBot:
         # Order execution tracking
         self.order_execution_complete = False
 
+        # Event-driven order tracking (initialized later in async context)
+        self.grvt_filled_event = None
+        self.lighter_filled_event = None
+
         # Current order details for immediate execution
         self.current_lighter_side = None
         self.current_lighter_quantity = None
         self.current_lighter_price = None
         self.lighter_order_info = None
+        self.current_grvt_order_id = None
 
         # Lighter API configuration
         self.lighter_base_url = "https://mainnet.zklighter.elliot.ai"
@@ -224,7 +247,7 @@ class HedgeBot:
                 order_data["side"] = "LONG"
                 order_type = "CLOSE"
                 self.lighter_position += Decimal(order_data["filled_base_amount"])
-            
+
             client_order_index = order_data["client_order_id"]
 
             self.logger.info(f"[{client_order_index}] [{order_type}] [Lighter] [FILLED]: "
@@ -241,6 +264,10 @@ class HedgeBot:
             # Mark execution as complete
             self.lighter_order_filled = True  # Mark order as filled
             self.order_execution_complete = True
+
+            # Trigger event for hybrid waiting
+            if self.lighter_filled_event:
+                self.lighter_filled_event.set()
 
         except Exception as e:
             self.logger.error(f"Error handling Lighter order result: {e}")
@@ -634,8 +661,14 @@ class HedgeBot:
             raise Exception("GRVT client not initialized")
 
         self.grvt_order_status = None
+
+        # Reset event for new order
+        if self.grvt_filled_event:
+            self.grvt_filled_event.clear()
+
         self.logger.info(f"[OPEN] [GRVT] [{side}] Placing GRVT POST-ONLY order")
         order_id, order_price = await self.place_bbo_order(side, quantity)
+        self.current_grvt_order_id = order_id
 
         start_time = time.time()
         while not self.stop_flag:
@@ -646,27 +679,41 @@ class HedgeBot:
                 await asyncio.sleep(0.5)
             elif self.grvt_order_status in ['NEW', 'OPEN', 'PENDING', 'CANCELING', 'PARTIALLY_FILLED']:
                 await asyncio.sleep(0.5)
-                # Check if we need to cancel and replace the order
-                should_cancel = False
-                best_bid, best_ask = await self.fetch_grvt_bbo_prices()
-                if side == 'buy':
-                    if order_price < best_bid:
-                        should_cancel = True
-                else:
-                    if order_price > best_ask:
-                        should_cancel = True
-                if time.time() - start_time > 10:
+
+                # Check if enough time has passed and order needs adjustment
+                time_elapsed = time.time() - start_time
+
+                # Only consider canceling after minimum order lifetime
+                if time_elapsed > self.min_order_lifetime:
+                    best_bid, best_ask = await self.fetch_grvt_bbo_prices()
+                    should_cancel = False
+
+                    # Calculate tolerance in price units
+                    price_tolerance = Decimal(self.price_tolerance_ticks) * self.grvt_tick_size
+
+                    if side == 'buy':
+                        # Cancel only if our price is worse than (best_bid - tolerance)
+                        if order_price < best_bid - price_tolerance:
+                            should_cancel = True
+                            self.logger.info(f"📊 Buy order price {order_price} is {best_bid - order_price:.2f} below best bid {best_bid} (tolerance: {price_tolerance})")
+                    else:
+                        # Cancel only if our price is worse than (best_ask + tolerance)
+                        if order_price > best_ask + price_tolerance:
+                            should_cancel = True
+                            self.logger.info(f"📊 Sell order price {order_price} is {order_price - best_ask:.2f} above best ask {best_ask} (tolerance: {price_tolerance})")
+
                     if should_cancel:
                         try:
                             # Cancel the order using GRVT client
+                            self.logger.info(f"🔄 Canceling order {order_id} after {time_elapsed:.1f}s - price outside tolerance")
                             cancel_result = await self.grvt_client.cancel_order(order_id)
                             if not cancel_result.success:
                                 self.logger.error(f"❌ Error canceling GRVT order: {cancel_result.error_message}")
                         except Exception as e:
                             self.logger.error(f"❌ Error canceling GRVT order: {e}")
                     else:
-                        self.logger.info(f"Order {order_id} is at best bid/ask, waiting for fill")
-                        start_time = time.time()
+                        self.logger.debug(f"✅ Order {order_id} price within tolerance, waiting for fill")
+                        start_time = time.time()  # Reset timer
             elif self.grvt_order_status == 'FILLED':
                 break
             else:
@@ -725,6 +772,10 @@ class HedgeBot:
         self.lighter_order_side = lighter_side
         self.lighter_order_size = quantity
 
+        # Reset event for new order
+        if self.lighter_filled_event:
+            self.lighter_filled_event.clear()
+
         try:
             client_order_index = int(time.time() * 1000)
             # Sign the order transaction
@@ -758,23 +809,16 @@ class HedgeBot:
             return None
 
     async def monitor_lighter_order(self, client_order_index: int):
-        """Monitor Lighter order and adjust price if needed."""
+        """Monitor Lighter order using hybrid approach."""
+        # Use the hybrid waiting method
+        success = await self.wait_for_lighter_fill_with_fallback(client_order_index, timeout=30)
 
-        start_time = time.time()
-        while not self.lighter_order_filled and not self.stop_flag:
-            # Check for timeout (30 seconds total)
-            if time.time() - start_time > 30:
-                self.logger.error(f"❌ Timeout waiting for Lighter order fill after {time.time() - start_time:.1f}s")
-                self.logger.error(f"❌ Order state - Filled: {self.lighter_order_filled}")
-
-                # Fallback: Mark as filled to continue trading
-                self.logger.warning("⚠️ Using fallback - marking order as filled to continue trading")
-                self.lighter_order_filled = True
-                self.waiting_for_lighter_fill = False
-                self.order_execution_complete = True
-                break
-
-            await asyncio.sleep(0.1)  # Check every 100ms
+        if not success:
+            # Timeout reached and order not confirmed filled
+            self.logger.error(f"❌ Lighter order {client_order_index} did not fill in time")
+            self.logger.warning("⚠️ Check position manually - potential mismatch")
+        else:
+            self.logger.info(f"✅ Lighter order {client_order_index} confirmed filled")
 
     async def modify_lighter_order(self, client_order_index: int, new_price: Decimal):
         """Modify current Lighter order with new price using client_order_index."""
@@ -810,6 +854,179 @@ class HedgeBot:
             self.logger.error(f"❌ Error modifying Lighter order: {e}")
             import traceback
             self.logger.error(f"❌ Full traceback: {traceback.format_exc()}")
+
+    async def wait_for_grvt_fill_with_fallback(self, order_id: str, timeout: int = 180) -> bool:
+        """Wait for GRVT order to fill using hybrid approach: event-driven + periodic status check.
+
+        Args:
+            order_id: GRVT order ID to monitor
+            timeout: Maximum time to wait in seconds
+
+        Returns:
+            True if order filled, False if timeout or error
+        """
+        start_time = time.time()
+        last_status_check = 0
+        status_check_interval = 5  # Check actual status every 5 seconds as fallback
+
+        self.logger.info(f"⏳ Waiting for GRVT order {order_id} to fill (hybrid mode)")
+
+        while time.time() - start_time < timeout:
+            try:
+                # Try to wait for event with short timeout (1 second)
+                await asyncio.wait_for(self.grvt_filled_event.wait(), timeout=1.0)
+                self.logger.info(f"✅ GRVT order filled (event triggered)")
+                return True
+
+            except asyncio.TimeoutError:
+                # Event didn't trigger in 1 second, check actual status periodically
+                if time.time() - last_status_check >= status_check_interval:
+                    try:
+                        order_info = await self.grvt_client.get_order_info(order_id)
+                        last_status_check = time.time()
+
+                        if order_info and order_info.status == 'FILLED':
+                            self.logger.warning(f"⚠️ GRVT order filled but event missed (WebSocket issue?)")
+                            # Manually trigger the handling since event was missed
+                            self.grvt_order_status = 'FILLED'
+                            return True
+                        elif order_info and order_info.status == 'CANCELED':
+                            self.logger.warning(f"⚠️ GRVT order was canceled")
+                            return False
+
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ Error checking GRVT order status: {e}")
+
+                # Continue waiting
+                continue
+
+        # Timeout reached
+        self.logger.error(f"❌ Timeout waiting for GRVT order {order_id} after {timeout}s")
+        return False
+
+    async def wait_for_lighter_fill_with_fallback(self, client_order_index: int, timeout: int = 30) -> bool:
+        """Wait for Lighter order to fill using hybrid approach.
+
+        Args:
+            client_order_index: Lighter client order index
+            timeout: Maximum time to wait in seconds
+
+        Returns:
+            True if order filled, False if timeout
+        """
+        start_time = time.time()
+
+        self.logger.info(f"⏳ Waiting for Lighter order {client_order_index} to fill (hybrid mode)")
+
+        while time.time() - start_time < timeout:
+            try:
+                # Try to wait for event with short timeout (0.5 second)
+                await asyncio.wait_for(self.lighter_filled_event.wait(), timeout=0.5)
+                self.logger.info(f"✅ Lighter order filled (event triggered)")
+                return True
+
+            except asyncio.TimeoutError:
+                # Event didn't trigger, continue waiting
+                # Note: Lighter doesn't have REST API to check status, rely on WebSocket
+                continue
+
+        # Timeout reached
+        self.logger.error(f"❌ Timeout waiting for Lighter order {client_order_index} after {timeout}s")
+
+        # Last resort: check if order was actually filled via WebSocket but event missed
+        if self.lighter_order_filled:
+            self.logger.warning(f"⚠️ Lighter order marked as filled (flag check)")
+            return True
+
+        return False
+
+    async def check_position_balance(self) -> Tuple[bool, Decimal]:
+        """Check if positions are balanced.
+
+        Returns:
+            Tuple of (is_balanced, position_diff)
+        """
+        position_diff = self.grvt_position + self.lighter_position
+        is_balanced = abs(position_diff) <= self.rebalance_threshold
+
+        return is_balanced, position_diff
+
+    async def auto_rebalance_positions(self) -> bool:
+        """Automatically rebalance positions if imbalance detected.
+
+        Returns:
+            True if rebalance successful or not needed, False if failed
+        """
+        is_balanced, position_diff = await self.check_position_balance()
+
+        if is_balanced:
+            return True
+
+        if not self.auto_rebalance:
+            self.logger.error(f"⚠️ Position imbalance detected: {position_diff:.4f}, but auto-rebalance is disabled")
+            return False
+
+        self.logger.warning(f"⚠️ Position imbalance detected: GRVT={self.grvt_position}, Lighter={self.lighter_position}, Diff={position_diff:.4f}")
+        self.logger.info(f"🔧 Starting auto-rebalance (attempt {self.rebalance_attempts + 1}/{self.max_rebalance_attempts})")
+
+        self.rebalance_attempts += 1
+
+        if self.rebalance_attempts > self.max_rebalance_attempts:
+            self.logger.error(f"❌ Max rebalance attempts ({self.max_rebalance_attempts}) reached. Manual intervention required.")
+            return False
+
+        try:
+            # Determine which side to trade to rebalance
+            rebalance_quantity = abs(position_diff)
+
+            if position_diff > 0:
+                # GRVT has more long position, need to sell on GRVT
+                side = 'sell'
+                self.logger.info(f"🔄 Rebalancing: Selling {rebalance_quantity} on GRVT")
+            else:
+                # GRVT has more short position (or less long), need to buy on GRVT
+                side = 'buy'
+                self.logger.info(f"🔄 Rebalancing: Buying {rebalance_quantity} on GRVT")
+
+            # Reset execution flags
+            self.order_execution_complete = False
+            self.waiting_for_lighter_fill = False
+
+            # Place GRVT order to rebalance
+            await self.place_grvt_post_only_order(side, rebalance_quantity)
+
+            # Wait for execution
+            start_time = time.time()
+            while not self.order_execution_complete and not self.stop_flag:
+                if self.waiting_for_lighter_fill:
+                    await self.place_lighter_market_order(
+                        self.current_lighter_side,
+                        self.current_lighter_quantity,
+                        self.current_lighter_price
+                    )
+                    break
+
+                await asyncio.sleep(0.1)
+                if time.time() - start_time > 120:
+                    self.logger.error("❌ Timeout during rebalance")
+                    return False
+
+            # Check if rebalance was successful
+            is_balanced, new_diff = await self.check_position_balance()
+
+            if is_balanced:
+                self.logger.info(f"✅ Rebalance successful! New diff: {new_diff:.4f}")
+                self.rebalance_attempts = 0  # Reset counter on success
+                return True
+            else:
+                self.logger.warning(f"⚠️ Rebalance completed but still imbalanced: {new_diff:.4f}")
+                # Try again if we haven't hit max attempts
+                return await self.auto_rebalance_positions()
+
+        except Exception as e:
+            self.logger.error(f"❌ Error during rebalance: {e}")
+            self.logger.error(f"❌ Full traceback: {traceback.format_exc()}")
+            return False
 
     async def setup_grvt_websocket(self):
         """Setup GRVT websocket for order updates and order book data."""
@@ -853,6 +1070,10 @@ class HedgeBot:
                         quantity=str(filled_size)
                     )
 
+                    # Trigger event for hybrid waiting
+                    if self.grvt_filled_event:
+                        self.grvt_filled_event.set()
+
                     self.handle_grvt_order_update({
                         'order_id': order_id,
                         'side': side,
@@ -890,6 +1111,28 @@ class HedgeBot:
         """Main trading loop implementing the new strategy."""
         self.logger.info(f"🚀 Starting hedge bot for {self.ticker}")
 
+        # Initialize event objects for hybrid mode
+        self.grvt_filled_event = asyncio.Event()
+        self.lighter_filled_event = asyncio.Event()
+        self.logger.info("✅ Event objects initialized for hybrid mode")
+
+        # Log configuration
+        self.logger.info("=== Configuration ===")
+        self.logger.info(f"Order Quantity: {self.order_quantity}")
+        self.logger.info(f"Iterations: {self.iterations}")
+        self.logger.info(f"Price Tolerance: {self.price_tolerance_ticks} ticks")
+        self.logger.info(f"Min Order Lifetime: {self.min_order_lifetime}s")
+        self.logger.info(f"Rebalance Threshold: {self.rebalance_threshold}")
+        self.logger.info(f"Auto Rebalance: {self.auto_rebalance}")
+        self.logger.info(f"Hybrid Mode: Enabled (event-driven + periodic fallback)")
+        self.logger.info("")
+        self.logger.info(f"=== Cycle Mode ===")
+        self.logger.info(f"Cycles: {self.cycles}")
+        self.logger.info(f"Build-up Iterations: {self.build_up_iterations}")
+        self.logger.info(f"Hold Time: {self.hold_time}s ({self.hold_time/60:.1f} min)")
+        self.logger.info(f"Strategy: Build-up → Hold → Wind-down → Repeat")
+        self.logger.info("=" * 20)
+
         # Initialize clients
         try:
             self.initialize_lighter_client()
@@ -901,6 +1144,8 @@ class HedgeBot:
 
             self.logger.info(f"Contract info loaded - GRVT: {self.grvt_contract_id}, "
                              f"Lighter: {self.lighter_market_index}")
+            self.logger.info(f"GRVT tick size: {self.grvt_tick_size}, "
+                             f"Price tolerance: {Decimal(self.price_tolerance_ticks) * self.grvt_tick_size}")
 
         except Exception as e:
             self.logger.error(f"❌ Failed to initialize: {e}")
@@ -941,8 +1186,162 @@ class HedgeBot:
 
         await asyncio.sleep(5)
 
+        # Main cycle loop
+        for cycle in range(self.cycles):
+            if self.stop_flag:
+                break
+
+            self.logger.info("=" * 60)
+            self.logger.info(f"🔄 CYCLE {cycle + 1}/{self.cycles}")
+            self.logger.info("=" * 60)
+
+            # Phase 1: Build-up (累积仓位)
+            self.logger.info(f"📈 PHASE 1: Building up position ({self.build_up_iterations} iterations)")
+            for iteration in range(self.build_up_iterations):
+                if self.stop_flag:
+                    break
+
+                self.logger.info("-" * 50)
+                self.logger.info(f"📊 Build-up iteration {iteration + 1}/{self.build_up_iterations}")
+                self.logger.info(f"   Current positions - GRVT: {self.grvt_position} | Lighter: {self.lighter_position}")
+                self.logger.info("-" * 50)
+
+                # Check and auto-rebalance if needed
+                is_balanced, position_diff = await self.check_position_balance()
+                if not is_balanced:
+                    self.logger.warning(f"⚠️ Position imbalance detected: diff={position_diff:.4f}")
+                    if self.auto_rebalance:
+                        rebalance_success = await self.auto_rebalance_positions()
+                        if not rebalance_success:
+                            self.logger.error(f"❌ Failed to rebalance. Stopping.")
+                            break
+                    else:
+                        self.logger.error(f"❌ Position diff too large. Stopping.")
+                        break
+
+                # Place GRVT buy order
+                self.order_execution_complete = False
+                self.waiting_for_lighter_fill = False
+                try:
+                    await self.place_grvt_post_only_order('buy', self.order_quantity)
+                except Exception as e:
+                    self.logger.error(f"⚠️ Error placing GRVT order: {e}")
+                    self.logger.error(f"⚠️ Full traceback: {traceback.format_exc()}")
+                    break
+
+                # Wait for GRVT order to fill
+                grvt_filled = await self.wait_for_grvt_fill_with_fallback(self.current_grvt_order_id, timeout=180)
+                if not grvt_filled:
+                    self.logger.error("❌ GRVT order did not fill")
+                    break
+
+                # Place Lighter hedge order
+                if self.waiting_for_lighter_fill:
+                    await self.place_lighter_market_order(
+                        self.current_lighter_side,
+                        self.current_lighter_quantity,
+                        self.current_lighter_price
+                    )
+
+            if self.stop_flag:
+                break
+
+            # Phase 2: Hold (持有仓位)
+            if self.hold_time > 0:
+                self.logger.info("=" * 60)
+                self.logger.info(f"⏳ PHASE 2: Holding position for {self.hold_time} seconds ({self.hold_time/60:.1f} minutes)")
+                self.logger.info(f"   Current positions - GRVT: {self.grvt_position} | Lighter: {self.lighter_position}")
+                self.logger.info("=" * 60)
+
+                hold_start = time.time()
+                while time.time() - hold_start < self.hold_time and not self.stop_flag:
+                    await asyncio.sleep(10)
+                    elapsed = time.time() - hold_start
+                    remaining = self.hold_time - elapsed
+                    if int(elapsed) % 60 == 0:  # Log every minute
+                        self.logger.info(f"⏱️  Holding... {elapsed/60:.1f} min elapsed, {remaining/60:.1f} min remaining")
+
+            if self.stop_flag:
+                break
+
+            # Phase 3: Wind-down (平仓)
+            self.logger.info("=" * 60)
+            self.logger.info(f"📉 PHASE 3: Winding down position")
+            self.logger.info(f"   Positions to close - GRVT: {self.grvt_position} | Lighter: {self.lighter_position}")
+            self.logger.info("=" * 60)
+
+            # Calculate how many close iterations we need
+            close_iterations = int(abs(self.grvt_position) / self.order_quantity) if self.grvt_position != 0 else 0
+
+            for iteration in range(close_iterations):
+                if self.stop_flag:
+                    break
+
+                self.logger.info("-" * 50)
+                self.logger.info(f"📊 Wind-down iteration {iteration + 1}/{close_iterations}")
+                self.logger.info(f"   Current positions - GRVT: {self.grvt_position} | Lighter: {self.lighter_position}")
+                self.logger.info("-" * 50)
+
+                # Determine side based on current position
+                if self.grvt_position > 0:
+                    side = 'sell'
+                    quantity = min(self.order_quantity, self.grvt_position)
+                else:
+                    side = 'buy'
+                    quantity = min(self.order_quantity, abs(self.grvt_position))
+
+                # Place GRVT close order
+                self.order_execution_complete = False
+                self.waiting_for_lighter_fill = False
+                try:
+                    await self.place_grvt_post_only_order(side, quantity)
+                except Exception as e:
+                    self.logger.error(f"⚠️ Error placing GRVT order: {e}")
+                    self.logger.error(f"⚠️ Full traceback: {traceback.format_exc()}")
+                    break
+
+                # Wait for GRVT order to fill
+                grvt_filled = await self.wait_for_grvt_fill_with_fallback(self.current_grvt_order_id, timeout=180)
+                if not grvt_filled:
+                    self.logger.error("❌ GRVT order did not fill")
+                    break
+
+                # Place Lighter hedge order
+                if self.waiting_for_lighter_fill:
+                    await self.place_lighter_market_order(
+                        self.current_lighter_side,
+                        self.current_lighter_quantity,
+                        self.current_lighter_price
+                    )
+
+            # Clean up any remaining position
+            if abs(self.grvt_position) > 0.001:
+                self.logger.info(f"🧹 Cleaning up remaining position: {self.grvt_position}")
+                side = 'sell' if self.grvt_position > 0 else 'buy'
+
+                self.order_execution_complete = False
+                self.waiting_for_lighter_fill = False
+                try:
+                    await self.place_grvt_post_only_order(side, abs(self.grvt_position))
+                    grvt_filled = await self.wait_for_grvt_fill_with_fallback(self.current_grvt_order_id, timeout=180)
+
+                    if grvt_filled and self.waiting_for_lighter_fill:
+                        await self.place_lighter_market_order(
+                            self.current_lighter_side,
+                            self.current_lighter_quantity,
+                            self.current_lighter_price
+                        )
+                except Exception as e:
+                    self.logger.error(f"⚠️ Error in cleanup: {e}")
+
+            self.logger.info("=" * 60)
+            self.logger.info(f"✅ CYCLE {cycle + 1} COMPLETED")
+            self.logger.info(f"   Final positions - GRVT: {self.grvt_position} | Lighter: {self.lighter_position}")
+            self.logger.info("=" * 60)
+
+        # Legacy iteration loop (kept for backward compatibility)
         iterations = 0
-        while iterations < self.iterations and not self.stop_flag:
+        while iterations < self.iterations and not self.stop_flag and self.cycles == 1 and self.hold_time == 0:
             iterations += 1
             self.logger.info("-----------------------------------------------")
             self.logger.info(f"🔄 Trading loop iteration {iterations}")
@@ -950,9 +1349,19 @@ class HedgeBot:
 
             self.logger.info(f"[STEP 1] GRVT position: {self.grvt_position} | Lighter position: {self.lighter_position}")
 
-            if abs(self.grvt_position + self.lighter_position) > 0.2:
-                self.logger.error(f"❌ Position diff is too large: {self.grvt_position + self.lighter_position}")
-                break
+            # Check and auto-rebalance positions if needed
+            is_balanced, position_diff = await self.check_position_balance()
+            if not is_balanced:
+                self.logger.warning(f"⚠️ Position imbalance detected before iteration: diff={position_diff:.4f}")
+
+                if self.auto_rebalance:
+                    rebalance_success = await self.auto_rebalance_positions()
+                    if not rebalance_success:
+                        self.logger.error(f"❌ Failed to rebalance positions. Stopping trading.")
+                        break
+                else:
+                    self.logger.error(f"❌ Position diff too large: {position_diff:.4f}, auto-rebalance disabled. Stopping.")
+                    break
 
             self.order_execution_complete = False
             self.waiting_for_lighter_fill = False
@@ -965,21 +1374,20 @@ class HedgeBot:
                 self.logger.error(f"⚠️ Full traceback: {traceback.format_exc()}")
                 break
 
-            start_time = time.time()
-            while not self.order_execution_complete and not self.stop_flag:
-                # Check if GRVT order filled and we need to place Lighter order
-                if self.waiting_for_lighter_fill:
-                    await self.place_lighter_market_order(
-                        self.current_lighter_side,
-                        self.current_lighter_quantity,
-                        self.current_lighter_price
-                    )
-                    break
+            # Wait for GRVT order to fill using hybrid mode
+            grvt_filled = await self.wait_for_grvt_fill_with_fallback(self.current_grvt_order_id, timeout=180)
 
-                await asyncio.sleep(0.01)
-                if time.time() - start_time > 180:
-                    self.logger.error("❌ Timeout waiting for trade completion")
-                    break
+            if not grvt_filled:
+                self.logger.error("❌ GRVT order did not fill, skipping hedge")
+                break
+
+            # GRVT filled, place Lighter hedge order
+            if self.waiting_for_lighter_fill:
+                await self.place_lighter_market_order(
+                    self.current_lighter_side,
+                    self.current_lighter_quantity,
+                    self.current_lighter_price
+                )
 
             if self.stop_flag:
                 break
@@ -997,20 +1405,20 @@ class HedgeBot:
                 self.logger.error(f"⚠️ Full traceback: {traceback.format_exc()}")
                 break
 
-            while not self.order_execution_complete and not self.stop_flag:
-                # Check if GRVT order filled and we need to place Lighter order
-                if self.waiting_for_lighter_fill:
-                    await self.place_lighter_market_order(
-                        self.current_lighter_side,
-                        self.current_lighter_quantity,
-                        self.current_lighter_price
-                    )
-                    break
+            # Wait for GRVT order to fill using hybrid mode
+            grvt_filled = await self.wait_for_grvt_fill_with_fallback(self.current_grvt_order_id, timeout=180)
 
-                await asyncio.sleep(0.01)
-                if time.time() - start_time > 180:
-                    self.logger.error("❌ Timeout waiting for trade completion")
-                    break
+            if not grvt_filled:
+                self.logger.error("❌ GRVT order did not fill, skipping hedge")
+                break
+
+            # GRVT filled, place Lighter hedge order
+            if self.waiting_for_lighter_fill:
+                await self.place_lighter_market_order(
+                    self.current_lighter_side,
+                    self.current_lighter_quantity,
+                    self.current_lighter_price
+                )
 
             # Close remaining position
             self.logger.info(f"[STEP 3] GRVT position: {self.grvt_position} | Lighter position: {self.lighter_position}")
@@ -1031,21 +1439,20 @@ class HedgeBot:
                 self.logger.error(f"⚠️ Full traceback: {traceback.format_exc()}")
                 break
 
-            # Wait for order to be filled via WebSocket
-            while not self.order_execution_complete and not self.stop_flag:
-                # Check if GRVT order filled and we need to place Lighter order
-                if self.waiting_for_lighter_fill:
-                    await self.place_lighter_market_order(
-                        self.current_lighter_side,
-                        self.current_lighter_quantity,
-                        self.current_lighter_price
-                    )
-                    break
+            # Wait for GRVT order to fill using hybrid mode
+            grvt_filled = await self.wait_for_grvt_fill_with_fallback(self.current_grvt_order_id, timeout=180)
 
-                await asyncio.sleep(0.01)
-                if time.time() - start_time > 180:
-                    self.logger.error("❌ Timeout waiting for trade completion")
-                    break
+            if not grvt_filled:
+                self.logger.error("❌ GRVT order did not fill in STEP 3")
+                break
+
+            # GRVT filled, place Lighter hedge order
+            if self.waiting_for_lighter_fill:
+                await self.place_lighter_market_order(
+                    self.current_lighter_side,
+                    self.current_lighter_quantity,
+                    self.current_lighter_price
+                )
 
     async def run(self):
         """Run the hedge bot."""
@@ -1073,5 +1480,19 @@ def parse_arguments():
                         help='Number of iterations to run')
     parser.add_argument('--fill-timeout', type=int, default=5,
                         help='Timeout in seconds for maker order fills (default: 5)')
+    parser.add_argument('--price-tolerance', type=int, default=3,
+                        help='Price tolerance in ticks before canceling order (default: 3)')
+    parser.add_argument('--min-order-lifetime', type=int, default=30,
+                        help='Minimum order lifetime in seconds before considering cancellation (default: 30)')
+    parser.add_argument('--rebalance-threshold', type=float, default=0.15,
+                        help='Position imbalance threshold before triggering rebalance (default: 0.15)')
+    parser.add_argument('--no-auto-rebalance', action='store_true',
+                        help='Disable automatic position rebalancing (default: enabled)')
+    parser.add_argument('--build-up-iterations', type=int, default=None,
+                        help='Number of iterations to build up position before holding (default: same as --iter)')
+    parser.add_argument('--hold-time', type=int, default=0,
+                        help='Time in seconds to hold position (default: 0, e.g., 1800 for 30 min)')
+    parser.add_argument('--cycles', type=int, default=None,
+                        help='Number of build-hold-winddown cycles to run (default: 1)')
 
     return parser.parse_args()
