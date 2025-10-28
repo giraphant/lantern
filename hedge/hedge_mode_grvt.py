@@ -990,7 +990,7 @@ class HedgeBot:
                 return
 
             import aiohttp
-            url = f"https://mainnet.zklighter.elliot.ai/api/v1/account?by=account_index&value={lighter_account_index}"
+            url = f"https://mainnet.zklighter.elliot.ai/api/v1/account?by=index&value={lighter_account_index}"
 
             async with aiohttp.ClientSession() as session:
                 async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as response:
