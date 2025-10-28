@@ -705,17 +705,37 @@ class HedgeBot:
         self.current_grvt_order_id = order_id
 
         start_time = time.time()
+        order_repost_count = 0
+        max_repost = 3  # Maximum times to repost order if canceled due to price adjustment
+
         while not self.stop_flag:
             if self.grvt_order_status == 'CANCELED':
-                self.grvt_order_status = 'NEW'
-                order_id, order_price = await self.place_bbo_order(side, quantity)
-                start_time = time.time()
-                await asyncio.sleep(0.5)
+                # If order was canceled due to price adjustment, repost once
+                if order_repost_count < max_repost:
+                    self.logger.info(f"🔄 Order canceled, reposting ({order_repost_count + 1}/{max_repost})")
+                    self.grvt_order_status = 'NEW'
+                    order_id, order_price = await self.place_bbo_order(side, quantity)
+                    self.current_grvt_order_id = order_id
+                    start_time = time.time()
+                    order_repost_count += 1
+                    await asyncio.sleep(0.5)
+                else:
+                    self.logger.warning(f"⚠️ Order canceled {max_repost} times, giving up on this iteration")
+                    break
             elif self.grvt_order_status in ['NEW', 'OPEN', 'PENDING', 'CANCELING', 'PARTIALLY_FILLED']:
                 await asyncio.sleep(0.5)
 
                 # Check if enough time has passed and order needs adjustment
                 time_elapsed = time.time() - start_time
+
+                # Hard timeout after 5 minutes
+                if time_elapsed > 300:
+                    self.logger.warning(f"⚠️ Order {order_id} timeout after {time_elapsed:.1f}s, canceling...")
+                    try:
+                        await self.grvt_client.cancel_order(order_id)
+                    except:
+                        pass
+                    break
 
                 # Only consider canceling after minimum order lifetime
                 if time_elapsed > self.min_order_lifetime:
