@@ -1,0 +1,41 @@
+# Environment files
+.env
+*.env
+
+# Virtual environments
+env/
+venv/
+para_env/
+*_env/
+
+# Logs
+logs/
+*.log
+*.csv
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Documentation
+*.md
+docs/
+
+# CI/CD
+.github/
+
+# Other
+.DS_Store
+*.bak

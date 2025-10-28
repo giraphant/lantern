@@ -6,7 +6,29 @@
 
 本项目是对原始perp-dex-tools的优化和改进版本，主要针对对冲模式（Hedge Mode）进行了大幅增强。
 
-## 安装
+## 🐳 Docker 部署（推荐）
+
+最简单的部署方式是使用Docker：
+
+```bash
+# 1. 克隆仓库
+git clone https://github.com/giraphant/lantern.git
+cd lantern
+
+# 2. 配置环境变量
+cp .env.docker.example .env
+# 编辑 .env 文件，填入你的API密钥
+
+# 3. 启动
+docker-compose up -d
+
+# 4. 查看日志
+docker-compose logs -f
+```
+
+📖 详细说明请查看 [DOCKER.md](DOCKER.md)
+
+## 手动安装
 
 Python 版本要求（最佳选项是 Python 3.10 - 3.12）：
 

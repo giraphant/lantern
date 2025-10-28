@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  lantern:
+    build: .
+    container_name: lantern-hedge-bot
+    restart: unless-stopped
+
+    # Environment variables - REPLACE WITH YOUR VALUES
+    environment:
+      # GRVT Configuration
+      - GRVT_TRADING_ACCOUNT_ID=${GRVT_TRADING_ACCOUNT_ID}
+      - GRVT_PRIVATE_KEY=${GRVT_PRIVATE_KEY}
+      - GRVT_API_KEY=${GRVT_API_KEY}
+      - GRVT_ENVIRONMENT=prod
+
+      # Lighter Configuration
+      - LIGHTER_ACCOUNT_INDEX=${LIGHTER_ACCOUNT_INDEX}
+      - LIGHTER_API_KEY_INDEX=${LIGHTER_API_KEY_INDEX}
+      - API_KEY_PRIVATE_KEY=${API_KEY_PRIVATE_KEY}
+
+    # Mount logs directory to persist logs
+    volumes:
+      - ./logs:/app/logs
+
+    # Override default command with your parameters
+    # Uncomment and modify as needed:
+    # command: >
+    #   python3 hedge_mode.py
+    #   --exchange grvt
+    #   --ticker HYPE
+    #   --size 1
+    #   --build-up-iterations 20
+    #   --hold-time 1800
+    #   --cycles 24
+    #   --price-tolerance 3
+    #   --min-order-lifetime 30
