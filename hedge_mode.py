@@ -153,6 +153,24 @@ async def main():
         print(f"✓ Loaded environment from {args.env_file}")
     else:
         print(f"ℹ No .env file found at {args.env_file}, using system environment variables")
+
+    # Debug: Print all trading parameter environment variables
+    print("\n" + "="*60)
+    print("🔍 Environment Variables (Trading Parameters):")
+    print("="*60)
+    trading_env_vars = [
+        'EXCHANGE', 'TICKER', 'SIZE', 'ITERATIONS',
+        'BUILD_UP_ITERATIONS', 'HOLD_TIME', 'CYCLES', 'DIRECTION',
+        'PRICE_TOLERANCE', 'MIN_ORDER_LIFETIME', 'REBALANCE_THRESHOLD',
+        'AUTO_REBALANCE', 'FILL_TIMEOUT'
+    ]
+    for var in trading_env_vars:
+        value = os.getenv(var)
+        if value:
+            print(f"  {var} = {value}")
+        else:
+            print(f"  {var} = (not set)")
+    print("="*60 + "\n")
     
     # Validate exchange
     validate_exchange(args.exchange)

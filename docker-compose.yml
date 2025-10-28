@@ -27,7 +27,7 @@ services:
 
       # Cycle Mode Parameters
       - BUILD_UP_ITERATIONS=${BUILD_UP_ITERATIONS:-30}
-      - HOLD_TIME=${HOLD_TIME:-1800}
+      - HOLD_TIME=${HOLD_TIME:-180}
       - CYCLES=${CYCLES:-999999}
       - DIRECTION=${DIRECTION:-long}
 
