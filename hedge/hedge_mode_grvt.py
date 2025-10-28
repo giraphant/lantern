@@ -974,12 +974,47 @@ class HedgeBot:
 
         return False
 
+    async def sync_positions_from_api(self):
+        """Sync positions from exchange APIs to get accurate readings."""
+        try:
+            # Fetch GRVT position
+            grvt_pos = await asyncio.wait_for(
+                self.grvt_client.get_account_positions(),
+                timeout=10.0
+            )
+
+            # Fetch Lighter position
+            lighter_pos = await asyncio.wait_for(
+                self.lighter_client.get_account_positions(),
+                timeout=10.0
+            )
+
+            # Update local cache
+            old_grvt = self.grvt_position
+            old_lighter = self.lighter_position
+
+            self.grvt_position = grvt_pos
+            self.lighter_position = lighter_pos
+
+            self.logger.info(f"📊 Synced positions from API:")
+            self.logger.info(f"   GRVT: {old_grvt} → {self.grvt_position}")
+            self.logger.info(f"   Lighter: {old_lighter} → {self.lighter_position}")
+
+        except asyncio.TimeoutError:
+            self.logger.warning("⚠️ Timeout syncing positions from API, using cached values")
+        except Exception as e:
+            self.logger.error(f"❌ Error syncing positions: {e}")
+            self.logger.error(f"   Traceback: {traceback.format_exc()}")
+
     async def check_position_balance(self) -> Tuple[bool, Decimal]:
         """Check if positions are balanced.
 
         Returns:
             Tuple of (is_balanced, position_diff)
         """
+        # Sync positions from API first for accuracy
+        await self.sync_positions_from_api()
+
         position_diff = self.grvt_position + self.lighter_position
         is_balanced = abs(position_diff) <= self.rebalance_threshold
 
@@ -1255,6 +1290,12 @@ class HedgeBot:
 
             if self.lighter_order_book_ready:
                 self.logger.info("✅ Lighter WebSocket order book data received")
+
+            # Sync initial positions from API
+            self.logger.info("📊 Syncing initial positions from exchanges...")
+            await self.sync_positions_from_api()
+            self.logger.info(f"   Starting positions - GRVT: {self.grvt_position} | Lighter: {self.lighter_position}")
+
             else:
                 self.logger.warning("⚠️ Lighter WebSocket order book not ready")
 
