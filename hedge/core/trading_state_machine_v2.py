@@ -307,14 +307,41 @@ class TradingStateMachineV2:
             # Calculate progress
             remaining_builds = abs(position.lighter) / self.config.order_quantity if self.config.order_quantity > 0 else 0
 
-            # Check if we're done
-            if abs(position.grvt) < 0.001:
-                self.logger.info(f"✅ Position closed successfully")
+            # Check if we're done (both positions near zero)
+            if abs(position.grvt) < 0.001 and abs(position.lighter) < 0.001:
+                self.logger.info(f"✅ All positions closed successfully")
                 self.logger.info(f"   Final: GRVT={position.grvt} | Lighter={position.lighter}")
                 break
 
-            self.logger.info(f"📊 Winding down: ~{remaining_builds:.1f} units remaining")
-            self.logger.info(f"   Position: GRVT={position.grvt} | Lighter={position.lighter}")
+            # Only GRVT left - close it without hedge
+            if abs(position.grvt) > 0.001 and abs(position.lighter) < 0.001:
+                self.logger.info(f"📊 Closing remaining GRVT position: {position.grvt}")
+                execute_hedge = False
+            # Only Lighter left - close GRVT on opposite side to create hedge
+            elif abs(position.lighter) > 0.001 and abs(position.grvt) < 0.001:
+                self.logger.info(f"📊 Lighter position remains: {position.lighter}, creating GRVT hedge")
+                # Need to open GRVT position opposite to Lighter to enable closing
+                if position.lighter > 0:  # Lighter is long
+                    grvt_side = "buy"  # Buy GRVT to hedge
+                else:
+                    grvt_side = "sell"  # Sell GRVT to hedge
+                quantity = min(self.config.order_quantity, abs(position.lighter))
+                execute_hedge = True
+
+                # Place hedge order to balance
+                await self.orders.place_hedge_order(
+                    grvt_side=grvt_side,
+                    quantity=quantity,
+                    execute_hedge=execute_hedge
+                )
+                await asyncio.sleep(1.0)
+                continue  # Re-check positions
+
+            # Both positions exist - winddown with hedge
+            else:
+                self.logger.info(f"📊 Winding down: ~{remaining_builds:.1f} units remaining")
+                self.logger.info(f"   Position: GRVT={position.grvt} | Lighter={position.lighter}")
+                execute_hedge = True
 
             # Pre-trade safety check
             safety_result = await self.safety.run_pre_trade_checks(position)
@@ -332,11 +359,11 @@ class TradingStateMachineV2:
                 grvt_side = "buy"
                 quantity = min(self.config.order_quantity, abs(position.grvt))
 
-            # Place close order
+            # Place close order with appropriate hedge setting
             grvt_result, lighter_result = await self.orders.place_hedge_order(
                 grvt_side=grvt_side,
                 quantity=quantity,
-                execute_hedge=True
+                execute_hedge=execute_hedge
             )
 
             if not grvt_result.success:
