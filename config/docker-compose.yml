@@ -5,48 +5,36 @@ services:
     build:
       context: ..
       dockerfile: config/Dockerfile
-    container_name: lantern-hedge-bot
+    container_name: lantern-hedge-bot-v3
     restart: unless-stopped
 
-    # Environment variables - REPLACE WITH YOUR VALUES
+    # Environment variables - can be set in .env file or here
     environment:
-      # GRVT Configuration
-      - GRVT_TRADING_ACCOUNT_ID=${GRVT_TRADING_ACCOUNT_ID}
+      # GRVT Configuration (Required)
       - GRVT_API_KEY=${GRVT_API_KEY}
       - GRVT_PRIVATE_KEY=${GRVT_PRIVATE_KEY}
+      - GRVT_TRADING_ACCOUNT_ID=${GRVT_TRADING_ACCOUNT_ID}
       - GRVT_ENVIRONMENT=${GRVT_ENVIRONMENT:-prod}
 
-      # Lighter Configuration
-      - LIGHTER_API_PRIVATE_KEY=${LIGHTER_API_PRIVATE_KEY}
-      - LIGHTER_ACCOUNT_INDEX=${LIGHTER_ACCOUNT_INDEX}
-      - LIGHTER_API_KEY_INDEX=${LIGHTER_API_KEY_INDEX}
-      - LIGHTER_API_HOST=${LIGHTER_API_HOST:-https://mainnet.zklighter.elliot.ai}
+      # Lighter Configuration (Required)
+      - LIGHTER_PRIVATE_KEY=${LIGHTER_PRIVATE_KEY}
+      - LIGHTER_ACCOUNT_INDEX=${LIGHTER_ACCOUNT_INDEX:-0}
+      - LIGHTER_API_KEY_INDEX=${LIGHTER_API_KEY_INDEX:-0}
 
-      # Basic Trading Parameters
-      - TRADING_SYMBOL=${TRADING_SYMBOL:-BTC}
-      - TRADING_SIZE=${TRADING_SIZE:-0.3}
-      - TRADING_DIRECTION=${TRADING_DIRECTION:-long}
-
-      # Cycle Parameters
+      # Trading Parameters (Optional - have defaults)
+      - TRADING_SYMBOL=${TRADING_SYMBOL:-BNB}
+      - TRADING_SIZE=${TRADING_SIZE:-0.1}
       - CYCLE_TARGET=${CYCLE_TARGET:-5}
-      - CYCLE_INTERVAL=${CYCLE_INTERVAL:-60}
       - CYCLE_HOLD_TIME=${CYCLE_HOLD_TIME:-180}
 
-      # Order Parameters
-      - ORDER_TIMEOUT=${ORDER_TIMEOUT:-30}
-      - ORDER_SPREAD_BPS=${ORDER_SPREAD_BPS:-10}
-      - ORDER_MAX_RETRIES=${ORDER_MAX_RETRIES:-3}
-
-      # Safety Parameters
-      - SAFETY_MAX_POSITION=${SAFETY_MAX_POSITION:-10.0}
-      - SAFETY_REBALANCE_TOLERANCE=${SAFETY_REBALANCE_TOLERANCE:-0.5}
-      - SAFETY_EMERGENCY_STOP_LOSS=${SAFETY_EMERGENCY_STOP_LOSS:-5.0}
-
-      # Control Parameters
-      - CONTROL_BLOCK_ORDERS=${CONTROL_BLOCK_ORDERS:-false}
-      - CONTROL_BLOCK_ORDER_RECREATION=${CONTROL_BLOCK_ORDER_RECREATION:-false}
-
-    # Mount logs directory to persist logs
+    # Mount logs directory and .env file
     volumes:
       - ../logs:/app/logs
       - ../.env:/app/.env:ro
+
+    # Optional: Set logging driver
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
