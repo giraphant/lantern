@@ -19,7 +19,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from hedge.models import TradingConfig
 from hedge.managers import SafetyManager, PositionManager, OrderManager
-from hedge.core import TradingStateMachine
+from hedge.core.trading_state_machine_v2 import TradingStateMachineV2
 from exchanges.grvt import GrvtClient
 from lighter.signer_client import SignerClient
 
@@ -126,9 +126,9 @@ class HedgeBotV2:
             logger=self.logger
         )
 
-        # Initialize state machine
-        self.logger.info("Initializing state machine...")
-        self.state_machine = TradingStateMachine(
+        # Initialize state machine V2 (position-based)
+        self.logger.info("Initializing state machine V2 (position-based)...")
+        self.state_machine = TradingStateMachineV2(
             safety_manager=self.safety_manager,
             position_manager=self.position_manager,
             order_manager=self.order_manager,

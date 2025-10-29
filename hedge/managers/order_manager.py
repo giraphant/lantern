@@ -9,7 +9,7 @@ import time
 import asyncio
 import logging
 from decimal import Decimal
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 
 from hedge.models import OrderRequest, OrderResult, OrderStatus, TradingConfig
 

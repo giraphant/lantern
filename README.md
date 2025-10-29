@@ -48,6 +48,8 @@ hedge/
 
 - **安全第一**：每笔交易前进行多层安全检查
 - **纯API仓位**：不做本地仓位累积，始终从交易所获取
+- **基于仓位的进度**：使用实际仓位计算进度，而非循环计数（V2新特性）
+- **自动恢复**：程序重启后自动识别当前进度并继续
 - **原子操作**：每个操作要么完全成功，要么完全失败
 - **状态机**：清晰的状态转换（建仓 → 持仓 → 平仓）
 
@@ -90,6 +92,7 @@ hedge/
 ## 📚 文档
 
 - [架构设计图](docs/ARCHITECTURE.md)
+- [基于仓位的逻辑说明](docs/POSITION_BASED_LOGIC.md) 🆕
 - [Docker部署指南](docs/DOCKER.md)
 - [English Documentation](docs/README_EN.md)
 - [环境配置示例](docs/env_example.txt)
