@@ -102,14 +102,29 @@ class HedgeBotV2:
 
         # Initialize Lighter client
         self.logger.info("Initializing Lighter client...")
-        lighter_blockchain_id = "lighter_chain_42161"
         lighter_market_id = self._get_lighter_market_id(self.config.ticker)
 
-        self.lighter_client = SignerClient.from_env(
-            blockchain_id=lighter_blockchain_id,
-            market_id=lighter_market_id
+        # Get Lighter credentials from environment
+        lighter_private_key = os.getenv('LIGHTER_PRIVATE_KEY')
+        if not lighter_private_key:
+            raise Exception("LIGHTER_PRIVATE_KEY environment variable not set")
+
+        lighter_account_index = int(os.getenv('LIGHTER_ACCOUNT_INDEX', '0'))
+        lighter_api_key_index = int(os.getenv('LIGHTER_API_KEY_INDEX', '0'))
+
+        self.lighter_client = SignerClient(
+            url="https://mainnet.zklighter.elliot.ai",
+            private_key=lighter_private_key,
+            account_index=lighter_account_index,
+            api_key_index=lighter_api_key_index,
         )
-        await self.lighter_client.connect()
+
+        # Check client
+        err = self.lighter_client.check_client()
+        if err is not None:
+            raise Exception(f"Lighter client check error: {err}")
+
+        self.logger.info(f"Lighter client initialized for market {lighter_market_id}")
 
         # Initialize managers
         self.logger.info("Initializing managers...")
@@ -121,6 +136,7 @@ class HedgeBotV2:
 
         self.position_manager = PositionManager(
             grvt_client=self.grvt_client,
+            lighter_client=self.lighter_client,
             lighter_market_index=lighter_market_id,
             logger=self.logger
         )

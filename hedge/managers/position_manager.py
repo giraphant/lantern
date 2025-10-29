@@ -59,11 +59,13 @@ class PositionManager:
     def __init__(
         self,
         grvt_client,
+        lighter_client,
         lighter_market_index: int,
         logger: Optional[logging.Logger] = None,
         cache_ttl: int = 5
     ):
         self.grvt_client = grvt_client
+        self.lighter_client = lighter_client
         self.lighter_market_index = lighter_market_index
         self.logger = logger or logging.getLogger(__name__)
 
