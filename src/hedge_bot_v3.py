@@ -240,27 +240,12 @@ class HedgeBotV3:
             await self.cleanup()
 
     async def _handle_building_phase(self, position: PositionState):
-        """处理建仓阶段"""
-        # 目标：达到target_cycles的仓位
-        target_position = self.order_quantity * self.target_cycles
+        """处理建仓阶段 - 执行固定的对冲交易"""
+        self.logger.info(f"📈 BUILDING: GRVT buy + Lighter sell {self.order_quantity}")
 
-        # 使用Rebalancer计算如何达到目标
-        instruction = Rebalancer.calculate_rebalance(
-            current_position=position,
-            target_total_position=target_position,
-            order_size=self.order_quantity,
-            tolerance=self.order_quantity * Decimal("0.1")
-        )
-
-        if instruction.action == TradeAction.HOLD:
-            # 已达到目标，不需要操作
-            return
-
-        # 执行建仓操作
-        self.logger.info(f"📈 BUILDING: {instruction.reason}")
         result = await self.executor.execute_trade(
-            instruction.action,
-            instruction.quantity,
+            action=TradeAction.BUILD_LONG,
+            quantity=self.order_quantity,
             wait_for_fill=True,
             fill_timeout=30
         )
@@ -270,27 +255,12 @@ class HedgeBotV3:
             await asyncio.sleep(5)
 
     async def _handle_winddown_phase(self, position: PositionState):
-        """处理平仓阶段"""
-        # 目标：回到0仓位
-        target_position = Decimal(0)
+        """处理平仓阶段 - 执行固定的对冲交易"""
+        self.logger.info(f"📉 WINDING DOWN: GRVT sell + Lighter buy {self.order_quantity}")
 
-        # 使用Rebalancer计算如何达到目标
-        instruction = Rebalancer.calculate_rebalance(
-            current_position=position,
-            target_total_position=target_position,
-            order_size=self.order_quantity,
-            tolerance=self.order_quantity * Decimal("0.1")
-        )
-
-        if instruction.action == TradeAction.HOLD:
-            # 已平仓完毕，不需要操作
-            return
-
-        # 执行平仓操作
-        self.logger.info(f"📉 WINDING DOWN: {instruction.reason}")
         result = await self.executor.execute_trade(
-            instruction.action,
-            instruction.quantity,
+            action=TradeAction.CLOSE_LONG,
+            quantity=self.order_quantity,
             wait_for_fill=True,
             fill_timeout=30
         )
