@@ -40,8 +40,10 @@ pip install -r requirements.txt
 
 ```env
 # GRVT配置
+GRVT_TRADING_ACCOUNT_ID=your_trading_account_id
 GRVT_API_KEY=your_key
 GRVT_PRIVATE_KEY=your_private_key
+GRVT_ENVIRONMENT=prod
 
 # Lighter配置
 LIGHTER_API_PRIVATE_KEY=your_lighter_api_private_key

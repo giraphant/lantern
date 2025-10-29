@@ -95,7 +95,7 @@ class HedgeBotV3:
                 block_order_recreation=self.config.block_order_recreation,
                 block_orders=self.config.block_orders
             )
-            grvt_client = GrvtClient(grvt_config, self.logger)
+            grvt_client = GrvtClient(grvt_config)
 
             # 初始化Lighter客户端
             self.logger.info("Initializing Lighter client...")
@@ -181,7 +181,7 @@ def load_config() -> TradingConfig:
         lighter_private_key=os.getenv("LIGHTER_API_PRIVATE_KEY"),
         lighter_account_index=int(os.getenv("LIGHTER_ACCOUNT_INDEX", "0")),
         lighter_api_key_index=int(os.getenv("LIGHTER_API_KEY_INDEX", "0")),
-        lighter_api_host=os.getenv("LIGHTER_API_HOST", "https://chain.lighter.xyz/api"),
+        lighter_api_host=os.getenv("LIGHTER_API_HOST", "https://mainnet.zklighter.elliot.ai"),
 
         # 基础交易参数
         symbol=os.getenv("TRADING_SYMBOL", os.getenv("SYMBOL", "BTC")),  # 支持旧参数

@@ -11,14 +11,16 @@ services:
     # Environment variables - REPLACE WITH YOUR VALUES
     environment:
       # GRVT Configuration
+      - GRVT_TRADING_ACCOUNT_ID=${GRVT_TRADING_ACCOUNT_ID}
       - GRVT_API_KEY=${GRVT_API_KEY}
       - GRVT_PRIVATE_KEY=${GRVT_PRIVATE_KEY}
+      - GRVT_ENVIRONMENT=${GRVT_ENVIRONMENT:-prod}
 
       # Lighter Configuration
       - LIGHTER_API_PRIVATE_KEY=${LIGHTER_API_PRIVATE_KEY}
       - LIGHTER_ACCOUNT_INDEX=${LIGHTER_ACCOUNT_INDEX}
       - LIGHTER_API_KEY_INDEX=${LIGHTER_API_KEY_INDEX}
-      - LIGHTER_API_HOST=${LIGHTER_API_HOST:-https://chain.lighter.xyz/api}
+      - LIGHTER_API_HOST=${LIGHTER_API_HOST:-https://mainnet.zklighter.elliot.ai}
 
       # Basic Trading Parameters
       - TRADING_SYMBOL=${TRADING_SYMBOL:-BTC}

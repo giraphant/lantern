@@ -110,7 +110,7 @@ class TradingConfig:
     lighter_private_key: str  # Lighter API私钥
     lighter_account_index: int = 0  # Lighter账户索引
     lighter_api_key_index: int = 0  # Lighter API密钥索引
-    lighter_api_host: str = "https://chain.lighter.xyz/api"
+    lighter_api_host: str = "https://mainnet.zklighter.elliot.ai"
 
     # Basic parameters
     symbol: str = "BTC"  # Trading symbol
