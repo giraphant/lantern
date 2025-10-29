@@ -54,6 +54,12 @@ class HedgeBotV2:
 
     def _setup_logger(self) -> logging.Logger:
         """Setup logging configuration."""
+        # Suppress GRVT SDK debug logs
+        logging.getLogger('pysdk.grvt_ccxt_logging_selector').setLevel(logging.WARNING)
+        logging.getLogger('pysdk').setLevel(logging.WARNING)
+        logging.getLogger('websockets').setLevel(logging.WARNING)
+        logging.getLogger('asyncio').setLevel(logging.WARNING)
+
         logger = logging.getLogger(f"hedge_bot_v2_{self.config.ticker}")
         logger.setLevel(logging.INFO)
 
@@ -209,6 +215,9 @@ class HedgeBotV2:
 
 async def main():
     """Main entry point."""
+    # Set root logger to WARNING to suppress verbose logs
+    logging.basicConfig(level=logging.WARNING)
+
     # Load environment variables
     env_path = Path(".env")
     if env_path.exists():
