@@ -15,8 +15,9 @@ services:
       - GRVT_PRIVATE_KEY=${GRVT_PRIVATE_KEY}
 
       # Lighter Configuration
-      - LIGHTER_API_KEY=${LIGHTER_API_KEY}
-      - LIGHTER_PRIVATE_KEY=${LIGHTER_PRIVATE_KEY}
+      - API_KEY_PRIVATE_KEY=${API_KEY_PRIVATE_KEY}
+      - LIGHTER_ACCOUNT_INDEX=${LIGHTER_ACCOUNT_INDEX}
+      - LIGHTER_API_KEY_INDEX=${LIGHTER_API_KEY_INDEX}
       - LIGHTER_API_HOST=${LIGHTER_API_HOST:-https://chain.lighter.xyz/api}
 
       # Trading Parameters

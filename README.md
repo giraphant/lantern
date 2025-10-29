@@ -44,8 +44,9 @@ GRVT_API_KEY=your_key
 GRVT_PRIVATE_KEY=your_private_key
 
 # Lighter配置
-LIGHTER_API_KEY=your_key
-LIGHTER_PRIVATE_KEY=your_private_key
+API_KEY_PRIVATE_KEY=your_lighter_api_private_key
+LIGHTER_ACCOUNT_INDEX=your_account_index
+LIGHTER_API_KEY_INDEX=4
 
 # 交易参数
 SYMBOL=BTC

@@ -100,9 +100,10 @@ class HedgeBotV3:
             # 初始化Lighter客户端
             self.logger.info("Initializing Lighter client...")
             lighter_client = SignerClient(
-                api_key=self.config.lighter_api_key,
-                api_private_key=self.config.lighter_private_key,
-                api_host=self.config.lighter_api_host
+                url=self.config.lighter_api_host,
+                private_key=self.config.lighter_private_key,
+                api_key_index=self.config.lighter_api_key_index,
+                account_index=self.config.lighter_account_index
             )
 
             # 创建对冲服务
@@ -178,8 +179,9 @@ def load_config() -> TradingConfig:
         symbol=os.getenv("SYMBOL", "BTC"),
         grvt_api_key=os.getenv("GRVT_API_KEY"),
         grvt_private_key=os.getenv("GRVT_PRIVATE_KEY"),
-        lighter_api_key=os.getenv("LIGHTER_API_KEY"),
-        lighter_private_key=os.getenv("LIGHTER_PRIVATE_KEY"),
+        lighter_private_key=os.getenv("API_KEY_PRIVATE_KEY"),  # Lighter API私钥
+        lighter_account_index=int(os.getenv("LIGHTER_ACCOUNT_INDEX", "0")),
+        lighter_api_key_index=int(os.getenv("LIGHTER_API_KEY_INDEX", "0")),
         lighter_api_host=os.getenv("LIGHTER_API_HOST", "https://chain.lighter.xyz/api"),
 
         # 交易参数
@@ -203,7 +205,6 @@ def load_config() -> TradingConfig:
     if not all([
         config.grvt_api_key,
         config.grvt_private_key,
-        config.lighter_api_key,
         config.lighter_private_key
     ]):
         raise ValueError("Missing required API keys")
