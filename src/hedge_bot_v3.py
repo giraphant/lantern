@@ -30,39 +30,6 @@ from hedge.trading_executor import TradingExecutor
 from hedge.phase_detector import PhaseDetector, TradingPhase
 
 
-def infer_phase_from_position_DEPRECATED(position: PositionState, target_cycles: int, order_size: Decimal) -> TradingPhase:
-    """
-    从交易所真实仓位推断当前应该处于哪个阶段（纯函数，无状态）。
-
-    逻辑：
-    - 如果GRVT仓位 >= 目标仓位：应该平仓
-    - 如果GRVT仓位接近0：应该建仓
-    - 如果GRVT仓位在中间：可能在建仓中或平仓中
-
-    Args:
-        position: 当前仓位
-        target_cycles: 目标循环数
-        order_size: 每次订单大小
-
-    Returns:
-        TradingPhase
-    """
-    target_grvt = order_size * target_cycles
-    current_grvt = abs(position.grvt_position)
-
-    # 如果仓位很小，应该建仓
-    if current_grvt < order_size * Decimal("0.5"):
-        return TradingPhase.BUILDING
-
-    # 如果仓位达到或超过目标，应该平仓
-    if current_grvt >= target_grvt * Decimal("0.8"):
-        return TradingPhase.WINDING_DOWN
-
-    # 中间状态：可能在建仓中或持仓中
-    # 这里我们保守地认为是在建仓，因为没有持仓时间的信息
-    return TradingPhase.BUILDING
-
-
 class Config:
     """配置类"""
     def __init__(self, **kwargs):
