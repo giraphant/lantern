@@ -92,6 +92,7 @@ class HedgeBotV3:
             grvt_config = Config(
                 api_key=self.config.grvt_api_key,
                 priv_key_file=self.config.grvt_private_key,
+                ticker=self.config.symbol,
                 block_order_recreation=self.config.block_order_recreation,
                 block_orders=self.config.block_orders
             )

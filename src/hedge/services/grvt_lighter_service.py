@@ -410,13 +410,25 @@ class GrvtLighterHedgeService(HedgeService):
         """取消所有未成交订单"""
         try:
             # GRVT取消订单
-            grvt_task = self.grvt.cancel_all_orders(self.symbol)
+            contract_id = self.symbol  # 使用symbol作为contract_id
+            try:
+                active_orders = await self.grvt.get_active_orders(contract_id)
+                if active_orders:
+                    self.logger.info(f"Cancelling {len(active_orders)} GRVT orders")
+                    for order in active_orders:
+                        try:
+                            await self.grvt.cancel_order(order.order_id)
+                        except Exception as e:
+                            self.logger.warning(f"Failed to cancel order {order.order_id}: {e}")
+                else:
+                    self.logger.debug("No active GRVT orders to cancel")
+            except Exception as e:
+                self.logger.error(f"Failed to get/cancel GRVT orders: {e}")
 
-            # Lighter暂时不实现取消（需要查询订单ID）
+            # Lighter暂时不实现取消（需要查询订单ID和实现方法）
             # TODO: 实现Lighter订单查询和取消
 
-            await grvt_task
-            self.logger.info("All orders cancelled")
+            self.logger.info("Order cancellation completed")
             return True
 
         except Exception as e:
