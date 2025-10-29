@@ -177,6 +177,29 @@ class TradingStateMachineV2:
             self.logger.info(f"📊 Building position: {completed_builds}/{self.config.build_iterations} ({progress:.1f}%)")
             self.logger.info(f"   Current: GRVT={position.grvt} | Lighter={position.lighter}")
 
+            # Check if positions need rebalancing (within tolerance)
+            position_diff = position.imbalance
+            if abs(position_diff) > self.config.order_quantity * 0.5:  # Half of order size
+                # If within tolerance, do a small rebalance
+                if abs(position_diff) <= self.config.max_position_diff:
+                    self.logger.warning(f"⚖️ Position imbalance detected: {position_diff:.4f}")
+
+                    # Determine which side needs rebalancing
+                    if position_diff > 0:  # GRVT too long
+                        rebalance_side = "sell" if self.current_direction == "long" else "buy"
+                        rebalance_quantity = min(self.config.order_quantity * 0.5, abs(position_diff))
+                        self.logger.info(f"   Rebalancing: Placing GRVT {rebalance_side} for {rebalance_quantity}")
+
+                        # Place small rebalance order
+                        await self.orders.place_hedge_order(
+                            grvt_side=rebalance_side,
+                            quantity=rebalance_quantity,
+                            execute_hedge=False  # Don't hedge the rebalance
+                        )
+                    else:  # Lighter too long
+                        self.logger.info(f"   Rebalancing: Skipping Lighter hedge on next order")
+                        # Will be handled by not hedging next GRVT order
+
             # Pre-trade safety check
             has_excessive, order_count = await self.orders.check_excessive_orders()
             if has_excessive:

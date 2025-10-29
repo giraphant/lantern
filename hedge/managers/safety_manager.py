@@ -71,10 +71,11 @@ class SafetyManager:
             )
 
         # Check 2: Position imbalance exceeds tolerance
+        # Changed to warning - allows rebalancing instead of stopping
         elif abs(position.imbalance) > self.max_position_diff:
-            errors.append(
+            warnings.append(
                 f"Position imbalance {position.imbalance:.4f} exceeds "
-                f"tolerance {self.max_position_diff:.4f}"
+                f"tolerance {self.max_position_diff:.4f} - rebalancing recommended"
             )
 
         # Check 3: Individual position size limits

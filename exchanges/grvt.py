@@ -10,6 +10,7 @@ from typing import Dict, Any, List, Optional, Tuple
 from pysdk.grvt_ccxt import GrvtCcxt
 from pysdk.grvt_ccxt_ws import GrvtCcxtWS
 from pysdk.grvt_ccxt_env import GrvtEnv, GrvtWSEndpointType
+import websockets.exceptions
 
 from .base import BaseExchangeClient, OrderResult, OrderInfo, query_retry
 from helpers.logger import TradingLogger
@@ -119,9 +120,28 @@ class GrvtClient(BaseExchangeClient):
         """Disconnect from GRVT."""
         try:
             if self._ws_client:
-                await self._ws_client.__aexit__()
+                # Try to close WebSocket gracefully
+                try:
+                    # Use the proper close method if available
+                    if hasattr(self._ws_client, 'close'):
+                        await self._ws_client.close()
+                    else:
+                        # Fall back to __aexit__ but suppress normal closure errors
+                        await self._ws_client.__aexit__(None, None, None)
+                except (websockets.exceptions.ConnectionClosedOK,
+                        websockets.exceptions.ConnectionClosed):
+                    # Normal closure, not an error
+                    pass
+                except Exception as e:
+                    # Only log unexpected errors
+                    if "1000" not in str(e) and "OK" not in str(e):
+                        self.logger.log(f"Error during GRVT disconnect: {e}", "WARNING")
+                finally:
+                    self._ws_client = None
         except Exception as e:
-            self.logger.log(f"Error during GRVT disconnect: {e}", "ERROR")
+            # Only log if it's not a normal closure
+            if "1000" not in str(e) and "OK" not in str(e):
+                self.logger.log(f"Error during GRVT cleanup: {e}", "WARNING")
 
     def get_exchange_name(self) -> str:
         """Get the exchange name."""
