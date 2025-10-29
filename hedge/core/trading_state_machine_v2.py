@@ -221,10 +221,23 @@ class TradingStateMachineV2:
             )
 
             if not safety_result.passed:
-                self.logger.error("Safety check failed during build phase")
-                self.logger.error(str(safety_result))
-                await self._emergency_stop()
-                return
+                # Check if it's critical (needs emergency stop) or just tolerance exceeded
+                has_critical = any("CRITICAL" in err for err in safety_result.errors)
+
+                if has_critical:
+                    self.logger.error("CRITICAL safety check failed - emergency stop")
+                    self.logger.error(str(safety_result))
+                    await self._emergency_stop()
+                    return
+                else:
+                    # Tolerance exceeded but not critical - stop building, wait for recovery
+                    self.logger.warning("Safety check failed - pausing build phase")
+                    self.logger.warning(str(safety_result))
+                    self.logger.info("⏸️ Waiting for position imbalance to recover...")
+
+                    # Wait and retry periodically
+                    await asyncio.sleep(30)
+                    continue  # Retry the safety check
 
             # Place hedge order
             grvt_result, lighter_result = await self.orders.place_hedge_order(

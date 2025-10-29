@@ -174,25 +174,21 @@ class OrderManager:
         quantity: Decimal
     ) -> OrderResult:
         """Place a market order on Lighter."""
-        import requests
-
         try:
-            # Get order book from Lighter API
-            market_index = self.config.order_quantity  # This is wrong, need to get market_index
-            # For now, use a simple price fetch from API
-            # In production, should get market_index from config
-
-            # Use a reasonable price offset for market orders
-            # Get current best bid/ask from GRVT as reference
+            # For now, use GRVT price as fallback
+            # TODO: In future, should fetch from Lighter API directly
+            # This works because arbitrage keeps prices close
             best_bid, best_ask = await self.grvt_client.fetch_bbo_prices(
                 self.grvt_client.config.contract_id
             )
 
-            # Use GRVT price as reference with slight offset for market order
+            # Use aggressive pricing to ensure fill
+            # Market buy: use ask + 1% to ensure execution
+            # Market sell: use bid - 1% to ensure execution
             if side == "buy":
-                price = best_ask * Decimal('1.001')  # 0.1% higher for market buy
+                price = best_ask * Decimal('1.01')  # 1% higher for market buy
             else:
-                price = best_bid * Decimal('0.999')  # 0.1% lower for market sell
+                price = best_bid * Decimal('0.99')  # 1% lower for market sell
 
             # Place market order
             is_ask = (side == "sell")
