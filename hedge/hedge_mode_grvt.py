@@ -30,12 +30,72 @@ class Config:
             setattr(self, key, value)
 
 
+class SafetyChecker:
+    """
+    Centralized safety checks for the hedge bot.
+    All checks run before each trading iteration.
+    """
+
+    def __init__(self, logger, order_quantity: Decimal, rebalance_tolerance: Decimal):
+        self.logger = logger
+        self.order_quantity = order_quantity
+        self.rebalance_tolerance = rebalance_tolerance
+        self.max_position_imbalance = order_quantity * 10  # 10x order size is critical
+
+    async def run_all_checks(self, grvt_pos: Decimal, lighter_pos: Decimal,
+                            open_orders_count: int = 0) -> Tuple[bool, str]:
+        """
+        Run all safety checks before trading.
+
+        Returns:
+            (is_safe, error_message)
+        """
+        # Check 1: Position imbalance
+        position_diff = grvt_pos + lighter_pos
+
+        if abs(position_diff) > self.max_position_imbalance:
+            error_msg = (f"🚨 CRITICAL: Position imbalance {position_diff:.4f} exceeds "
+                        f"max acceptable {self.max_position_imbalance}\n"
+                        f"   GRVT: {grvt_pos} | Lighter: {lighter_pos}\n"
+                        f"   This indicates a serious error - requires manual intervention!")
+            self.logger.error(error_msg)
+            return False, error_msg
+
+        if abs(position_diff) > self.rebalance_tolerance:
+            error_msg = (f"⚠️ Position imbalance {position_diff:.4f} exceeds "
+                        f"tolerance {self.rebalance_tolerance}\n"
+                        f"   GRVT: {grvt_pos} | Lighter: {lighter_pos}\n"
+                        f"   Trading stopped. Please check positions.")
+            self.logger.error(error_msg)
+            return False, error_msg
+
+        # Check 2: Excessive open orders (should be 0 or 1)
+        if open_orders_count > 1:
+            error_msg = (f"⚠️ Excessive open orders detected: {open_orders_count}\n"
+                        f"   Maximum should be 1. This indicates order management issue.")
+            self.logger.error(error_msg)
+            return False, error_msg
+
+        # All checks passed
+        return True, ""
+
+    def log_safety_status(self, grvt_pos: Decimal, lighter_pos: Decimal):
+        """Log current safety status."""
+        position_diff = grvt_pos + lighter_pos
+        self.logger.info("=" * 60)
+        self.logger.info("🛡️  SAFETY CHECK")
+        self.logger.info(f"   Positions: GRVT={grvt_pos} | Lighter={lighter_pos}")
+        self.logger.info(f"   Difference: {position_diff:.4f} (tolerance: {self.rebalance_tolerance})")
+        self.logger.info(f"   Status: {'✅ SAFE' if abs(position_diff) <= self.rebalance_tolerance else '⚠️ UNSAFE'}")
+        self.logger.info("=" * 60)
+
+
 class HedgeBot:
     """Trading bot that places post-only orders on GRVT and hedges with market orders on Lighter."""
 
     def __init__(self, ticker: str, order_quantity: Decimal, fill_timeout: int = 5, iterations: int = 20,
                  price_tolerance_ticks: int = 3, min_order_lifetime: int = 30,
-                 rebalance_threshold: Decimal = Decimal('0.15'), auto_rebalance: bool = True,
+                 rebalance_tolerance: Decimal = Decimal('0.15'), auto_rebalance: bool = True,
                  build_up_iterations: int = None, hold_time: int = 0, cycles: int = None,
                  direction: str = 'long'):
         self.ticker = ticker
@@ -43,19 +103,27 @@ class HedgeBot:
         self.fill_timeout = fill_timeout
         self.lighter_order_filled = False
         self.iterations = iterations
-        self.grvt_position = Decimal('0')
-        self.lighter_position = Decimal('0')
+
+        # Position cache with TTL (instead of local accumulation)
+        self._grvt_position_cache = Decimal('0')
+        self._lighter_position_cache = Decimal('0')
+        self._position_cache_time = 0
+        self._position_cache_ttl = 5  # Cache valid for 5 seconds
+
         self.current_order = {}
 
         # Price tolerance parameters
         self.price_tolerance_ticks = price_tolerance_ticks
         self.min_order_lifetime = min_order_lifetime
 
-        # Auto-rebalance parameters
-        self.rebalance_threshold = rebalance_threshold
+        # Position tolerance parameters
+        self.rebalance_tolerance = rebalance_tolerance
         self.auto_rebalance = auto_rebalance
         self.rebalance_attempts = 0
         self.max_rebalance_attempts = 3
+
+        # Safety checker (initialized after logger is set up)
+        self.safety_checker = None
 
         # Cycle mode parameters
         self.build_up_iterations = build_up_iterations if build_up_iterations else iterations
@@ -121,9 +189,16 @@ class HedgeBot:
 
         # Prevent propagation to root logger to avoid duplicate messages and external logs
         self.logger.propagate = False
-        
+
         # Ensure our logger only shows our messages
         self.logger.setLevel(logging.INFO)
+
+        # Initialize safety checker
+        self.safety_checker = SafetyChecker(
+            logger=self.logger,
+            order_quantity=self.order_quantity,
+            rebalance_tolerance=self.rebalance_tolerance
+        )
 
         # State management
         self.stop_flag = False
@@ -250,11 +325,11 @@ class HedgeBot:
             if order_data["is_ask"]:
                 order_data["side"] = "SHORT"
                 order_type = "OPEN"
-                self.lighter_position -= Decimal(order_data["filled_base_amount"])
+                # Position tracking removed - use get_positions() API instead
             else:
                 order_data["side"] = "LONG"
                 order_type = "CLOSE"
-                self.lighter_position += Decimal(order_data["filled_base_amount"])
+                # Position tracking removed - use get_positions() API instead
 
             client_order_index = order_data["client_order_id"]
 
@@ -1042,8 +1117,23 @@ class HedgeBot:
 
         return False
 
-    async def sync_positions_from_api(self):
-        """Sync positions from exchange APIs to get accurate readings."""
+    async def get_positions(self, force_refresh: bool = False) -> Tuple[Decimal, Decimal]:
+        """
+        Get positions from exchange APIs with caching.
+        Always fetches from API - no local accumulation.
+
+        Args:
+            force_refresh: If True, bypass cache and fetch fresh data
+
+        Returns:
+            Tuple of (grvt_position, lighter_position) with proper signs
+        """
+        current_time = time.time()
+
+        # Use cache if valid and not forcing refresh
+        if not force_refresh and (current_time - self._position_cache_time) < self._position_cache_ttl:
+            return self._grvt_position_cache, self._lighter_position_cache
+
         try:
             # Fetch GRVT position
             grvt_pos = await asyncio.wait_for(
@@ -1054,8 +1144,8 @@ class HedgeBot:
             # Fetch Lighter position using REST API (no private key needed)
             lighter_account_index = os.getenv('LIGHTER_ACCOUNT_INDEX')
             if not lighter_account_index:
-                self.logger.warning("⚠️ LIGHTER_ACCOUNT_INDEX not set, cannot sync Lighter position")
-                return
+                self.logger.warning("⚠️ LIGHTER_ACCOUNT_INDEX not set, cannot fetch Lighter position")
+                return grvt_pos, Decimal('0')
 
             import aiohttp
             url = f"https://mainnet.zklighter.elliot.ai/api/v1/account?by=index&value={lighter_account_index}"
@@ -1064,14 +1154,14 @@ class HedgeBot:
                 async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as response:
                     if response.status != 200:
                         self.logger.warning(f"⚠️ Lighter API returned status {response.status}")
-                        return
+                        return grvt_pos, self._lighter_position_cache
 
                     data = await response.json()
                     accounts = data.get('accounts', [])
 
                     if not accounts:
                         self.logger.warning("⚠️ No accounts found in Lighter API response")
-                        return
+                        return grvt_pos, self._lighter_position_cache
 
                     account = accounts[0]
                     positions = account.get('positions', [])
@@ -1085,34 +1175,45 @@ class HedgeBot:
                             lighter_pos = pos_size * sign
                             break
 
-            # Update local cache
-            old_grvt = self.grvt_position
-            old_lighter = self.lighter_position
+            # Update cache
+            old_grvt = self._grvt_position_cache
+            old_lighter = self._lighter_position_cache
 
-            self.grvt_position = grvt_pos
-            self.lighter_position = lighter_pos
+            self._grvt_position_cache = grvt_pos
+            self._lighter_position_cache = lighter_pos
+            self._position_cache_time = current_time
 
-            self.logger.info(f"📊 Synced positions from API:")
-            self.logger.info(f"   GRVT: {old_grvt} → {self.grvt_position}")
-            self.logger.info(f"   Lighter: {old_lighter} → {self.lighter_position}")
+            if old_grvt != grvt_pos or old_lighter != lighter_pos:
+                self.logger.info(f"📊 Positions updated from API:")
+                self.logger.info(f"   GRVT: {old_grvt} → {grvt_pos}")
+                self.logger.info(f"   Lighter: {old_lighter} → {lighter_pos}")
+
+            return grvt_pos, lighter_pos
 
         except asyncio.TimeoutError:
-            self.logger.warning("⚠️ Timeout syncing positions from API, using cached values")
+            self.logger.warning("⚠️ Timeout fetching positions from API, using cached values")
+            return self._grvt_position_cache, self._lighter_position_cache
         except Exception as e:
-            self.logger.error(f"❌ Error syncing positions: {e}")
+            self.logger.error(f"❌ Error fetching positions: {e}")
             self.logger.error(f"   Traceback: {traceback.format_exc()}")
+            return self._grvt_position_cache, self._lighter_position_cache
 
     async def check_position_balance(self) -> Tuple[bool, Decimal]:
         """Check if positions are balanced.
 
         Returns:
             Tuple of (is_balanced, position_diff)
-        """
-        # Sync positions from API first for accuracy
-        await self.sync_positions_from_api()
 
-        position_diff = self.grvt_position + self.lighter_position
-        is_balanced = abs(position_diff) <= self.rebalance_threshold
+        Note: rebalance_threshold is the MAXIMUM acceptable difference.
+        If diff > threshold, trading should STOP, not attempt to rebalance.
+        """
+        # Fetch positions from API (force refresh for accuracy)
+        grvt_pos, lighter_pos = await self.get_positions(force_refresh=True)
+
+        position_diff = grvt_pos + lighter_pos
+
+        # Balanced means within acceptable tolerance
+        is_balanced = abs(position_diff) <= self.rebalance_tolerance
 
         return is_balanced, position_diff
 
@@ -1131,7 +1232,20 @@ class HedgeBot:
             self.logger.error(f"⚠️ Position imbalance detected: {position_diff:.4f}, but auto-rebalance is disabled")
             return False
 
-        self.logger.warning(f"⚠️ Position imbalance detected: GRVT={self.grvt_position}, Lighter={self.lighter_position}, Diff={position_diff:.4f}")
+        # Get current positions from API for logging
+        grvt_pos, lighter_pos = await self.get_positions()
+
+        # CRITICAL: If diff is too large (>10x order_quantity), something is seriously wrong
+        # Don't attempt to rebalance - stop trading immediately!
+        max_acceptable_diff = self.order_quantity * 10
+        if abs(position_diff) > max_acceptable_diff:
+            self.logger.error(f"🚨 CRITICAL: Position diff {position_diff:.4f} exceeds max acceptable {max_acceptable_diff}")
+            self.logger.error(f"🚨 GRVT={grvt_pos}, Lighter={lighter_pos}")
+            self.logger.error(f"🚨 This indicates a serious error - STOPPING TRADING!")
+            self.logger.error(f"🚨 Please check positions manually and restart if needed.")
+            return False
+
+        self.logger.warning(f"⚠️ Position imbalance detected: GRVT={grvt_pos}, Lighter={lighter_pos}, Diff={position_diff:.4f}")
         self.logger.info(f"🔧 Starting auto-rebalance (attempt {self.rebalance_attempts + 1}/{self.max_rebalance_attempts})")
 
         self.rebalance_attempts += 1
@@ -1142,16 +1256,17 @@ class HedgeBot:
 
         try:
             # Determine which side to trade to rebalance
-            rebalance_quantity = abs(position_diff)
+            # CRITICAL: Respect order_quantity limit - never exceed SIZE parameter!
+            rebalance_quantity = min(self.order_quantity, abs(position_diff))
 
             if position_diff > 0:
                 # GRVT has more long position, need to sell on GRVT
                 side = 'sell'
-                self.logger.info(f"🔄 Rebalancing: Selling {rebalance_quantity} on GRVT")
+                self.logger.info(f"🔄 Rebalancing: Selling {rebalance_quantity} on GRVT (diff: {position_diff:.4f})")
             else:
                 # GRVT has more short position (or less long), need to buy on GRVT
                 side = 'buy'
-                self.logger.info(f"🔄 Rebalancing: Buying {rebalance_quantity} on GRVT")
+                self.logger.info(f"🔄 Rebalancing: Buying {rebalance_quantity} on GRVT (diff: {position_diff:.4f})")
 
             # Reset execution flags
             self.order_execution_complete = False
@@ -1220,10 +1335,7 @@ class HedgeBot:
 
                 # Handle the order update
                 if status == 'FILLED' and self.grvt_order_status != 'FILLED':
-                    if side == 'buy':
-                        self.grvt_position += filled_size
-                    else:
-                        self.grvt_position -= filled_size
+                    # Position tracking removed - use get_positions() API instead
                     self.logger.info(f"[{order_id}] [{order_type}] [GRVT] [{status}]: {filled_size} @ {price}")
                     self.grvt_order_status = status
 
@@ -1287,7 +1399,7 @@ class HedgeBot:
         self.logger.info(f"Iterations: {self.iterations}")
         self.logger.info(f"Price Tolerance: {self.price_tolerance_ticks} ticks")
         self.logger.info(f"Min Order Lifetime: {self.min_order_lifetime}s")
-        self.logger.info(f"Rebalance Threshold: {self.rebalance_threshold}")
+        self.logger.info(f"Rebalance Tolerance: {self.rebalance_tolerance}")
         self.logger.info(f"Auto Rebalance: {self.auto_rebalance}")
         self.logger.info(f"Hybrid Mode: Enabled (event-driven + periodic fallback)")
         self.logger.info("")
@@ -1389,10 +1501,10 @@ class HedgeBot:
             else:
                 self.logger.warning("⚠️ Lighter WebSocket order book not ready")
 
-            # Sync initial positions from API
-            self.logger.info("📊 Syncing initial positions from exchanges...")
-            await self.sync_positions_from_api()
-            self.logger.info(f"   Starting positions - GRVT: {self.grvt_position} | Lighter: {self.lighter_position}")
+            # Get initial positions from API
+            self.logger.info("📊 Fetching initial positions from exchanges...")
+            initial_grvt, initial_lighter = await self.get_positions(force_refresh=True)
+            self.logger.info(f"   Starting positions - GRVT: {initial_grvt} | Lighter: {initial_lighter}")
 
         except Exception as e:
             self.logger.error(f"❌ Failed to setup Lighter websocket: {e}")
@@ -1431,9 +1543,12 @@ class HedgeBot:
                 if self.stop_flag:
                     break
 
+                # Get current positions from API for logging
+                current_grvt, current_lighter = await self.get_positions()
+
                 self.logger.info("-" * 50)
                 self.logger.info(f"📊 Build-up iteration {iteration + 1}/{self.build_up_iterations}")
-                self.logger.info(f"   Current positions - GRVT: {self.grvt_position} | Lighter: {self.lighter_position}")
+                self.logger.info(f"   Current positions - GRVT: {current_grvt} | Lighter: {current_lighter}")
                 self.logger.info("-" * 50)
 
                 # Check and auto-rebalance if needed
@@ -1478,9 +1593,12 @@ class HedgeBot:
 
             # Phase 2: Hold (持有仓位)
             if self.hold_time > 0:
+                # Get positions from API for hold phase logging
+                hold_grvt, hold_lighter = await self.get_positions(force_refresh=True)
+
                 self.logger.info("=" * 60)
                 self.logger.info(f"⏳ PHASE 2: Holding position for {self.hold_time} seconds ({self.hold_time/60:.1f} minutes)")
-                self.logger.info(f"   Current positions - GRVT: {self.grvt_position} | Lighter: {self.lighter_position}")
+                self.logger.info(f"   Current positions - GRVT: {hold_grvt} | Lighter: {hold_lighter}")
                 self.logger.info("=" * 60)
 
                 hold_start = time.time()
@@ -1497,28 +1615,35 @@ class HedgeBot:
             # Phase 3: Wind-down (平仓)
             self.logger.info("=" * 60)
             self.logger.info(f"📉 PHASE 3: Winding down position")
-            self.logger.info(f"   Positions to close - GRVT: {self.grvt_position} | Lighter: {self.lighter_position}")
-            self.logger.info("=" * 60)
 
-            # Calculate how many close iterations we need
-            close_iterations = int(abs(self.grvt_position) / self.order_quantity) if self.grvt_position != 0 else 0
+            # Wind down until position is near zero
+            # Always fetch from API - no local state accumulation
+            iteration = 0
+            max_winddown_iterations = 200  # Safety limit to prevent infinite loop
 
-            for iteration in range(close_iterations):
-                if self.stop_flag:
+            while iteration < max_winddown_iterations and not self.stop_flag:
+                # Fetch current positions from API
+                grvt_pos, lighter_pos = await self.get_positions(force_refresh=True)
+
+                # Check if we're done
+                if abs(grvt_pos) < 0.001:
+                    self.logger.info(f"✅ Wind-down complete - positions near zero")
+                    self.logger.info(f"   Final positions - GRVT: {grvt_pos} | Lighter: {lighter_pos}")
                     break
 
+                iteration += 1
                 self.logger.info("-" * 50)
-                self.logger.info(f"📊 Wind-down iteration {iteration + 1}/{close_iterations}")
-                self.logger.info(f"   Current positions - GRVT: {self.grvt_position} | Lighter: {self.lighter_position}")
+                self.logger.info(f"📊 Wind-down iteration {iteration}")
+                self.logger.info(f"   Current positions - GRVT: {grvt_pos} | Lighter: {lighter_pos}")
                 self.logger.info("-" * 50)
 
-                # Determine side based on current position
-                if self.grvt_position > 0:
+                # Determine side and quantity based on CURRENT API position
+                if grvt_pos > 0:
                     side = 'sell'
-                    quantity = min(self.order_quantity, self.grvt_position)
+                    quantity = min(self.order_quantity, grvt_pos)
                 else:
                     side = 'buy'
-                    quantity = min(self.order_quantity, abs(self.grvt_position))
+                    quantity = min(self.order_quantity, abs(grvt_pos))
 
                 # Place GRVT close order
                 self.order_execution_complete = False
@@ -1544,29 +1669,12 @@ class HedgeBot:
                         self.current_lighter_price
                     )
 
-            # Clean up any remaining position
-            if abs(self.grvt_position) > 0.001:
-                self.logger.info(f"🧹 Cleaning up remaining position: {self.grvt_position}")
-                side = 'sell' if self.grvt_position > 0 else 'buy'
-
-                self.order_execution_complete = False
-                self.waiting_for_lighter_fill = False
-                try:
-                    await self.place_grvt_post_only_order(side, abs(self.grvt_position))
-                    grvt_filled = await self.wait_for_grvt_fill_with_fallback(self.current_grvt_order_id, timeout=180)
-
-                    if grvt_filled and self.waiting_for_lighter_fill:
-                        await self.place_lighter_market_order(
-                            self.current_lighter_side,
-                            self.current_lighter_quantity,
-                            self.current_lighter_price
-                        )
-                except Exception as e:
-                    self.logger.error(f"⚠️ Error in cleanup: {e}")
+            # Get final positions from API
+            final_grvt, final_lighter = await self.get_positions(force_refresh=True)
 
             self.logger.info("=" * 60)
             self.logger.info(f"✅ CYCLE {cycle + 1} COMPLETED")
-            self.logger.info(f"   Final positions - GRVT: {self.grvt_position} | Lighter: {self.lighter_position}")
+            self.logger.info(f"   Final positions - GRVT: {final_grvt} | Lighter: {final_lighter}")
             self.logger.info("=" * 60)
 
         # Legacy iteration loop (kept for backward compatibility)
@@ -1577,7 +1685,9 @@ class HedgeBot:
             self.logger.info(f"🔄 Trading loop iteration {iterations}")
             self.logger.info("-----------------------------------------------")
 
-            self.logger.info(f"[STEP 1] GRVT position: {self.grvt_position} | Lighter position: {self.lighter_position}")
+            # Get positions from API
+            step1_grvt, step1_lighter = await self.get_positions()
+            self.logger.info(f"[STEP 1] GRVT position: {step1_grvt} | Lighter position: {step1_lighter}")
 
             # Check and auto-rebalance positions if needed
             is_balanced, position_diff = await self.check_position_balance()
@@ -1623,7 +1733,8 @@ class HedgeBot:
                 break
 
             # Close position
-            self.logger.info(f"[STEP 2] GRVT position: {self.grvt_position} | Lighter position: {self.lighter_position}")
+            step2_grvt, step2_lighter = await self.get_positions()
+            self.logger.info(f"[STEP 2] GRVT position: {step2_grvt} | Lighter position: {step2_lighter}")
             self.order_execution_complete = False
             self.waiting_for_lighter_fill = False
             try:
@@ -1651,19 +1762,23 @@ class HedgeBot:
                 )
 
             # Close remaining position
-            self.logger.info(f"[STEP 3] GRVT position: {self.grvt_position} | Lighter position: {self.lighter_position}")
+            step3_grvt, step3_lighter = await self.get_positions()
+            self.logger.info(f"[STEP 3] GRVT position: {step3_grvt} | Lighter position: {step3_lighter}")
             self.order_execution_complete = False
             self.waiting_for_lighter_fill = False
-            if self.grvt_position == 0:
+            if step3_grvt == 0:
                 continue
-            elif self.grvt_position > 0:
+            elif step3_grvt > 0:
                 side = 'sell'
             else:
                 side = 'buy'
 
+            # CRITICAL: Respect order_quantity limit
+            close_quantity = min(self.order_quantity, abs(step3_grvt))
+
             try:
                 # Determine side based on some logic (for now, alternate)
-                await self.place_grvt_post_only_order(side, abs(self.grvt_position))
+                await self.place_grvt_post_only_order(side, close_quantity)
             except Exception as e:
                 self.logger.error(f"⚠️ Error in trading loop: {e}")
                 self.logger.error(f"⚠️ Full traceback: {traceback.format_exc()}")

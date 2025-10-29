@@ -47,7 +47,7 @@ Environment Variables (can be used instead of command-line arguments):
     FILL_TIMEOUT - Timeout in seconds for maker order fills (default: 5)
     PRICE_TOLERANCE - Price tolerance in ticks (default: 3)
     MIN_ORDER_LIFETIME - Minimum order lifetime in seconds (default: 30)
-    REBALANCE_THRESHOLD - Position imbalance threshold (default: 0.15)
+    REBALANCE_TOLERANCE - Maximum acceptable position imbalance (default: 0.15)
     AUTO_REBALANCE - Enable auto-rebalance (default: true)
     BUILD_UP_ITERATIONS - Number of iterations to build up position
     HOLD_TIME - Time in seconds to hold position (default: 0)
@@ -77,9 +77,9 @@ Environment Variables (can be used instead of command-line arguments):
     parser.add_argument('--min-order-lifetime', type=int,
                         default=int(os.getenv('MIN_ORDER_LIFETIME', '30')),
                         help='Minimum order lifetime in seconds before considering cancellation (default: 30)')
-    parser.add_argument('--rebalance-threshold', type=float,
-                        default=float(os.getenv('REBALANCE_THRESHOLD', '0.15')),
-                        help='Position imbalance threshold before triggering rebalance (default: 0.15)')
+    parser.add_argument('--rebalance-tolerance', type=float,
+                        default=float(os.getenv('REBALANCE_TOLERANCE', '0.15')),
+                        help='Maximum acceptable position imbalance (default: 0.15)')
     parser.add_argument('--no-auto-rebalance', action='store_true',
                         default=os.getenv('AUTO_REBALANCE', 'true').lower() == 'false',
                         help='Disable automatic position rebalancing (default: enabled)')
@@ -161,7 +161,7 @@ async def main():
     trading_env_vars = [
         'EXCHANGE', 'TICKER', 'SIZE', 'ITERATIONS',
         'BUILD_UP_ITERATIONS', 'HOLD_TIME', 'CYCLES', 'DIRECTION',
-        'PRICE_TOLERANCE', 'MIN_ORDER_LIFETIME', 'REBALANCE_THRESHOLD',
+        'PRICE_TOLERANCE', 'MIN_ORDER_LIFETIME', 'REBALANCE_TOLERANCE',
         'AUTO_REBALANCE', 'FILL_TIMEOUT'
     ]
     for var in trading_env_vars:
@@ -195,7 +195,7 @@ async def main():
             iterations=args.iter,
             price_tolerance_ticks=args.price_tolerance,
             min_order_lifetime=args.min_order_lifetime,
-            rebalance_threshold=Decimal(str(args.rebalance_threshold)),
+            rebalance_tolerance=Decimal(str(args.rebalance_tolerance)),
             auto_rebalance=not args.no_auto_rebalance,
             build_up_iterations=args.build_up_iterations,
             hold_time=args.hold_time,

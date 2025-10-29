@@ -506,7 +506,8 @@ class GrvtClient(BaseExchangeClient):
 
         for position in positions:
             if position.get('instrument') == self.config.contract_id:
-                return abs(Decimal(position.get('size', 0)))
+                # Return signed position (positive=long, negative=short) for proper hedge calculations
+                return Decimal(position.get('size', 0))
 
         return Decimal(0)
 
