@@ -175,30 +175,37 @@ def load_config() -> TradingConfig:
 
     # 构建配置
     config = TradingConfig(
-        # 基础配置
-        symbol=os.getenv("SYMBOL", "BTC"),
+        # API配置
         grvt_api_key=os.getenv("GRVT_API_KEY"),
         grvt_private_key=os.getenv("GRVT_PRIVATE_KEY"),
-        lighter_private_key=os.getenv("API_KEY_PRIVATE_KEY"),  # Lighter API私钥
+        lighter_private_key=os.getenv("LIGHTER_API_PRIVATE_KEY"),
         lighter_account_index=int(os.getenv("LIGHTER_ACCOUNT_INDEX", "0")),
         lighter_api_key_index=int(os.getenv("LIGHTER_API_KEY_INDEX", "0")),
         lighter_api_host=os.getenv("LIGHTER_API_HOST", "https://chain.lighter.xyz/api"),
 
-        # 交易参数
-        order_quantity=Decimal(os.getenv("SIZE", "0.3")),
-        target_cycles=int(os.getenv("TARGET_CYCLES", "5")),
-        spread_bps=int(os.getenv("SPREAD_BPS", "10")),
+        # 基础交易参数
+        symbol=os.getenv("TRADING_SYMBOL", os.getenv("SYMBOL", "BTC")),  # 支持旧参数
+        order_quantity=Decimal(os.getenv("TRADING_SIZE", os.getenv("SIZE", "0.3"))),
+        direction=os.getenv("TRADING_DIRECTION", os.getenv("DIRECTION", "long")),
+
+        # 周期参数
+        target_cycles=int(os.getenv("CYCLE_TARGET", os.getenv("TARGET_CYCLES", "5"))),
         cycle_interval=int(os.getenv("CYCLE_INTERVAL", "60")),
+        hold_time=int(os.getenv("CYCLE_HOLD_TIME", "180")),
+
+        # 订单参数
         order_timeout=int(os.getenv("ORDER_TIMEOUT", "30")),
+        spread_bps=int(os.getenv("ORDER_SPREAD_BPS", os.getenv("SPREAD_BPS", "10"))),
+        max_retries=int(os.getenv("ORDER_MAX_RETRIES", "3")),
 
         # 安全参数
-        max_position=Decimal(os.getenv("MAX_POSITION", "10.0")),
-        rebalance_tolerance=Decimal(os.getenv("REBALANCE_TOLERANCE", "0.5")),
-        emergency_stop_loss=Decimal(os.getenv("EMERGENCY_STOP_LOSS", "5.0")),
+        max_position=Decimal(os.getenv("SAFETY_MAX_POSITION", os.getenv("MAX_POSITION", "10.0"))),
+        rebalance_tolerance=Decimal(os.getenv("SAFETY_REBALANCE_TOLERANCE", os.getenv("REBALANCE_TOLERANCE", "0.5"))),
+        emergency_stop_loss=Decimal(os.getenv("SAFETY_EMERGENCY_STOP_LOSS", "5.0")),
 
         # 控制参数
-        block_orders=os.getenv("BLOCK_ORDERS", "false").lower() == "true",
-        block_order_recreation=os.getenv("BLOCK_ORDER_RECREATION", "false").lower() == "true",
+        block_orders=os.getenv("CONTROL_BLOCK_ORDERS", os.getenv("BLOCK_ORDERS", "false")).lower() == "true",
+        block_order_recreation=os.getenv("CONTROL_BLOCK_ORDER_RECREATION", os.getenv("BLOCK_ORDER_RECREATION", "false")).lower() == "true",
     )
 
     # 验证必要参数
