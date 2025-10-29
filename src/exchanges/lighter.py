@@ -129,6 +129,15 @@ class LighterClient(BaseExchangeClient):
             # Initialize Lighter client
             await self._initialize_lighter_client()
 
+            # Get contract attributes if not already set
+            if self.config.ticker and not hasattr(self.config, 'contract_id'):
+                try:
+                    await self.get_contract_attributes()
+                    self.logger.log(f"Resolved ticker '{self.config.ticker}' to contract_id '{self.config.contract_id}'", "INFO")
+                except Exception as e:
+                    self.logger.log(f"Failed to resolve contract attributes: {e}", "ERROR")
+                    raise
+
             # Add market config to config for WebSocket manager
             self.config.market_index = self.config.contract_id
             self.config.account_index = self.account_index
@@ -502,14 +511,24 @@ class LighterClient(BaseExchangeClient):
         return account_data.accounts[0].positions
 
     async def get_account_positions(self) -> Decimal:
-        """Get account positions using official SDK."""
+        """
+        Get account positions using official SDK.
+
+        Returns signed position:
+        - Positive = Long position
+        - Negative = Short position
+        """
         # Get account info which includes positions
         positions = await self._fetch_positions_with_retry()
 
         # Find position for current market
         for position in positions:
             if position.market_id == self.config.contract_id:
-                return Decimal(position.position)
+                # position.position is absolute value
+                # position.sign is '1' (long) or '-1' (short) as string
+                pos_value = Decimal(position.position)
+                sign = int(position.sign)
+                return pos_value * sign
 
         return Decimal(0)
 
