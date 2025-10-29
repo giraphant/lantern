@@ -168,8 +168,9 @@ class HedgeBotV3:
                 rebalance_threshold = self.order_quantity
 
                 if position.imbalance > rebalance_threshold:
-                    # 需要打平，目标 = Lighter仓位（让两边完全对冲）
-                    target_position = position.lighter_position
+                    # 需要打平，目标 = 0（让两边完全对冲）
+                    # 通过调整Lighter仓位来实现（市价单立即成交）
+                    target_position = Decimal(0)
 
                     rebalance_instruction = Rebalancer.calculate_rebalance(
                         current_position=position,
@@ -185,7 +186,7 @@ class HedgeBotV3:
                         result = await self.executor.execute_trade(
                             rebalance_instruction.action,
                             rebalance_instruction.quantity,
-                            wait_for_fill=True,
+                            wait_for_fill=False,  # Lighter市价单不需要等待
                             fill_timeout=30
                         )
 

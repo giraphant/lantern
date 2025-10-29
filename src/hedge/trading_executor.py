@@ -270,19 +270,67 @@ class TradingExecutor:
         self, quantity: Decimal, wait_for_fill: bool, timeout: int
     ) -> ExecutionResult:
         """
-        建空仓：GRVT卖出 + Lighter买入。
+        Rebalance专用：Lighter卖出（市价单立即成交）。
+        用于减少Lighter空头仓位，增加净多头。
         """
-        # 和 close_long 逻辑相同
-        return await self._execute_close_long(quantity, wait_for_fill, timeout)
+        try:
+            self.logger.info(f"Rebalancing: Lighter sell {quantity}")
+            lighter_result = await self.lighter.place_open_order(
+                contract_id=self.lighter.config.contract_id,
+                quantity=quantity,
+                direction="sell"
+            )
+
+            if not lighter_result.success:
+                return ExecutionResult(
+                    success=False,
+                    error=f"Lighter rebalance sell failed: {lighter_result.error_message}"
+                )
+
+            self.logger.info(f"✓ Lighter rebalance sell @ {lighter_result.price}")
+
+            return ExecutionResult(
+                success=True,
+                lighter_order_id=lighter_result.order_id,
+                lighter_price=lighter_result.price
+            )
+
+        except Exception as e:
+            self.logger.error(f"Error executing rebalance sell: {e}")
+            return ExecutionResult(success=False, error=str(e))
 
     async def _execute_close_short(
         self, quantity: Decimal, wait_for_fill: bool, timeout: int
     ) -> ExecutionResult:
         """
-        平空仓：GRVT买入 + Lighter卖出。
+        Rebalance专用：Lighter买入（市价单立即成交）。
+        用于增加Lighter空头仓位，减少净多头。
         """
-        # 和 build_long 逻辑相同
-        return await self._execute_build_long(quantity, wait_for_fill, timeout)
+        try:
+            self.logger.info(f"Rebalancing: Lighter buy {quantity}")
+            lighter_result = await self.lighter.place_open_order(
+                contract_id=self.lighter.config.contract_id,
+                quantity=quantity,
+                direction="buy"
+            )
+
+            if not lighter_result.success:
+                return ExecutionResult(
+                    success=False,
+                    error=f"Lighter rebalance buy failed: {lighter_result.error_message}"
+                )
+
+            self.logger.info(f"✓ Lighter rebalance buy @ {lighter_result.price}")
+
+            return ExecutionResult(
+                success=True,
+                lighter_order_id=lighter_result.order_id,
+                lighter_price=lighter_result.price
+            )
+
+        except Exception as e:
+            self.logger.error(f"Error executing rebalance buy: {e}")
+            return ExecutionResult(success=False, error=str(e))
 
     async def _wait_for_fill(self, order_id: str, timeout: int) -> bool:
         """
