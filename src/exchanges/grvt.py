@@ -4,8 +4,10 @@ GRVT exchange client implementation.
 
 import os
 import asyncio
+import logging
 import time
 from decimal import Decimal
+from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple
 from pysdk.grvt_ccxt import GrvtCcxt
 from pysdk.grvt_ccxt_ws import GrvtCcxtWS
@@ -113,6 +115,15 @@ class GrvtClient(BaseExchangeClient):
                 # Initialize and connect
                 await self._ws_client.initialize()
                 await asyncio.sleep(2)  # Wait for connection to establish
+
+                # Get contract attributes (resolves ticker to contract_id)
+                if self.config.ticker and not hasattr(self.config, 'contract_id'):
+                    try:
+                        await self.get_contract_attributes()
+                        self.logger.log(f"Resolved ticker '{self.config.ticker}' to contract_id '{self.config.contract_id}'", "INFO")
+                    except Exception as e:
+                        self.logger.log(f"Failed to resolve contract attributes: {e}", "ERROR")
+                        raise
 
                 # If an order update callback was set before connect, subscribe now
                 if self._order_update_callback is not None:
@@ -505,6 +516,87 @@ class GrvtClient(BaseExchangeClient):
         return active_close_orders
 
     @query_retry(reraise=True)
+    async def get_order_history(self, contract_id: str = None, limit: int = 100) -> List[OrderInfo]:
+        """
+        获取订单历史。
+
+        Args:
+            contract_id: 合约ID（可选，不传则获取所有合约）
+            limit: 返回订单数量限制
+
+        Returns:
+            List[OrderInfo]: 订单列表，按时间倒序（最新的在前）
+        """
+        params = {}
+        if contract_id:
+            params['instrument'] = contract_id
+        if limit:
+            params['limit'] = limit
+
+        order_history = self.rest_client.fetch_order_history(params=params)
+
+        if not order_history or 'result' not in order_history:
+            return []
+
+        orders = []
+        for order_data in order_history.get('result', []):
+            legs = order_data.get('legs', [])
+            if not legs:
+                continue
+
+            leg = legs[0]
+            state = order_data.get('state', {})
+
+            # 解析时间（GRVT时间戳是纳秒，需要转换成秒）
+            created_time = None
+            filled_time = None
+            if state.get('create_time'):
+                created_time = datetime.utcfromtimestamp(int(state.get('create_time')) / 1_000_000_000)
+            if state.get('update_time') and state.get('status') == 'FILLED':
+                filled_time = datetime.utcfromtimestamp(int(state.get('update_time')) / 1_000_000_000)
+
+            order_info = OrderInfo(
+                order_id=order_data.get('order_id', ''),
+                side='buy' if leg.get('is_buying_asset') else 'sell',
+                size=Decimal(leg.get('size', 0)),
+                price=Decimal(leg.get('limit_price', 0)),
+                status=state.get('status', ''),
+                filled_size=(Decimal(state.get('traded_size', ['0'])[0])
+                            if isinstance(state.get('traded_size'), list) else Decimal(0)),
+                remaining_size=(Decimal(state.get('book_size', ['0'])[0])
+                                if isinstance(state.get('book_size'), list) else Decimal(0)),
+                created_time=created_time,
+                filled_time=filled_time
+            )
+            orders.append(order_info)
+
+        return orders
+
+    async def get_last_filled_order(self, contract_id: str) -> Optional[Tuple[str, datetime]]:
+        """
+        获取最后一笔已成交订单的方向和时间。
+
+        Args:
+            contract_id: 合约ID
+
+        Returns:
+            Tuple[str, datetime]: (方向, 成交时间)，如果没有则返回None
+        """
+        orders = await self.get_order_history(contract_id=contract_id, limit=100)
+
+        # 筛选出已成交的订单
+        filled_orders = [
+            order for order in orders
+            if order.status == 'FILLED' and order.filled_time
+        ]
+
+        if not filled_orders:
+            return None
+
+        # 返回最新的一个
+        last_order = max(filled_orders, key=lambda x: x.filled_time)
+        return (last_order.side, last_order.filled_time)
+
     async def get_active_orders(self, contract_id: str) -> List[OrderInfo]:
         """Get active orders for a contract."""
         # Get active orders using GRVT SDK

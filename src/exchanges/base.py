@@ -7,6 +7,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional, Tuple, Type, Union
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
+from datetime import datetime
 from tenacity import RetryCallState, retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 
@@ -56,6 +57,8 @@ class OrderInfo:
     filled_size: Decimal = 0.0
     remaining_size: Decimal = 0.0
     cancel_reason: str = ''
+    created_time: Optional[datetime] = None  # 订单创建时间
+    filled_time: Optional[datetime] = None   # 订单完全成交时间
 
 
 class BaseExchangeClient(ABC):
