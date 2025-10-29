@@ -55,7 +55,7 @@ class HedgeBotV3:
 
     def _setup_logger(self) -> logging.Logger:
         """设置日志记录器"""
-        logger = logging.getLogger(f'hedge_bot_v3_{self.config.symbol}')
+        logger = logging.getLogger(f'hedge_bot_{self.config.symbol}')
         logger.setLevel(logging.DEBUG)
 
         # 清除现有处理器

@@ -1,109 +1,109 @@
-# Lantern - 多交易所对冲交易机器人
+# Lantern Hedge Trading Bot
 
-一个专业的对冲交易机器人，在多个交易所之间维持市场中性仓位。
+基于V3架构的对冲交易机器人，支持GRVT和Lighter交易所。
+
+## 📁 项目结构
+
+```
+lantern/
+├── src/                  # 源代码
+│   ├── hedge/           # 对冲交易核心
+│   │   ├── core/        # 交易引擎
+│   │   ├── services/    # 服务层（HedgeService）
+│   │   ├── managers/    # 管理器（SafetyManager）
+│   │   ├── models/      # 数据模型
+│   │   └── hedge_bot.py # 主程序入口
+│   ├── exchanges/       # 交易所接口
+│   └── helpers/         # 辅助工具（日志、通知）
+│
+├── tests/               # 测试文件
+├── config/              # 配置文件
+│   ├── Dockerfile
+│   └── docker-compose.yml
+│
+├── docs/                # 文档
+├── run_hedge.py        # 运行脚本
+└── requirements.txt    # 依赖
+```
 
 ## 🚀 快速开始
 
-### Docker 部署（推荐）
+### 1. 安装依赖
 
 ```bash
-# 1. 复制并配置环境变量
-cp .env.docker.example .env
-# 编辑 .env 文件，填入你的 API 密钥和参数
-
-# 2. 使用 Docker Compose 运行
-docker-compose up
-```
-
-### 手动安装
-
-```bash
-# 1. 安装依赖
 pip install -r requirements.txt
-
-# 2. 配置环境
-cp .env.docker.example .env
-# 编辑 .env 文件，配置你的凭证
-
-# 3. 运行机器人（使用V2架构）
-python hedge/hedge_bot_v2.py
 ```
 
-## 🏗️ 架构设计 (V2)
+### 2. 配置环境变量
 
-机器人采用模块化架构，安全优先设计：
+创建`.env`文件：
 
+```env
+# GRVT配置
+GRVT_API_KEY=your_key
+GRVT_PRIVATE_KEY=your_private_key
+
+# Lighter配置
+LIGHTER_API_KEY=your_key
+LIGHTER_PRIVATE_KEY=your_private_key
+
+# 交易参数
+SYMBOL=BTC
+SIZE=0.3
+TARGET_CYCLES=5
+MAX_POSITION=10.0
+REBALANCE_TOLERANCE=0.5
 ```
-hedge/
-├── core/                 # 核心交易逻辑
-│   └── trading_state_machine.py
-├── managers/            # 专门管理器
-│   ├── safety_manager.py      # 安全检查
-│   ├── position_manager.py    # 仓位管理
-│   └── order_manager.py       # 订单管理
-└── models/              # 数据模型
+
+### 3. 运行
+
+```bash
+python run_hedge.py
 ```
 
-### 核心特性
+或使用Docker：
 
-- **安全第一**：每笔交易前进行多层安全检查
-- **纯API仓位**：不做本地仓位累积，始终从交易所获取
-- **基于仓位的进度**：使用实际仓位计算进度，而非循环计数（V2新特性）
-- **自动恢复**：程序重启后自动识别当前进度并继续
-- **原子操作**：每个操作要么完全成功，要么完全失败
-- **状态机**：清晰的状态转换（建仓 → 持仓 → 平仓）
+```bash
+docker-compose -f config/docker-compose.yml up
+```
 
-## ⚙️ 配置说明
+## 🏗️ V3架构
 
-### 核心参数
+### 核心组件
 
-| 参数 | 说明 | 默认值 |
-|-----|------|--------|
-| `SIZE` | 每笔订单大小 | 0.1 |
-| `REBALANCE_TOLERANCE` | 最大仓位偏差 | 0.15 |
-| `BUILD_UP_ITERATIONS` | 建仓阶段交易次数 | 30 |
-| `HOLD_TIME` | 持仓时间（秒） | 180 |
-| `CYCLES` | 循环次数 | 1 |
-| `DIRECTION` | 交易方向 | long |
+1. **HedgeService** - 对冲服务抽象层
+   - 定义统一的对冲操作接口
+   - 隐藏具体交易所实现细节
 
-### 安全参数
+2. **TradingEngine** - 交易引擎
+   - 管理交易状态（IDLE → BUILDING → HOLDING → WINDING_DOWN）
+   - 纯业务逻辑，不依赖具体实现
 
-| 参数 | 说明 | 默认值 |
-|-----|------|--------|
-| `MAX_POSITION` | 单边最大仓位 | 10 |
-| `MAX_OPEN_ORDERS` | 最大挂单数 | 1 |
-| `ORDER_TIMEOUT` | 订单超时（秒） | 30 |
+3. **SafetyManager** - 安全管理
+   - 分级安全响应（NORMAL → WARNING → AUTO_REBALANCE → PAUSE → EMERGENCY）
+   - 仓位限制和风险控制
 
-## 🔒 安全特性
+4. **GrvtLighterHedgeService** - 具体实现
+   - GRVT作为做市商（post-only）
+   - Lighter作为吃单商（market taker）
 
-1. **仓位限制**：永不超过配置的最大仓位
-2. **偏差保护**：对冲偏差超过容忍度时停止交易
-3. **订单大小限制**：所有订单都受SIZE参数限制
-4. **紧急停止**：关键错误时自动停止
-5. **无本地状态**：始终使用交易所API获取仓位
+### 特点
 
-## 📊 支持的交易所
+- ✅ 清晰的分层架构
+- ✅ 复用现有交易所实现
+- ✅ 无状态设计，支持崩溃恢复
+- ✅ 基于仓位的进度跟踪
+- ✅ 完善的安全机制
 
-- **GRVT**：Post-only maker订单
-- **Lighter**：Market taker订单
-- **Apex** (Beta)
-- **Backpack** (Beta)
+## 📊 监控
 
-## 📚 文档
+支持Telegram和Lark通知，在`.env`中配置：
 
-- [架构设计图](docs/ARCHITECTURE.md)
-- [基于仓位的逻辑说明](docs/POSITION_BASED_LOGIC.md) 🆕
-- [Docker部署指南](docs/DOCKER.md)
-- [English Documentation](docs/README_EN.md)
-- [环境配置示例](docs/env_example.txt)
+```env
+TELEGRAM_BOT_TOKEN=your_token
+TELEGRAM_CHAT_ID=your_chat_id
+```
 
-## ⚠️ 重要提醒
+## 📝 许可
 
-- 请先用小额测试
-- 监控两个交易所的仓位
-- 保持REBALANCE_TOLERANCE在0.1-0.2之间以确保安全
-- 生产环境使用V2架构（`hedge_bot_v2.py`）
-
-## 📝 License
-
-MIT
+MIT License

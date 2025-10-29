@@ -7,7 +7,7 @@
 复制示例环境文件并填入你的API密钥：
 
 ```bash
-cp .env.docker.example .env
+cp config/.env.docker.example .env
 # 编辑 .env 文件，填入你的API密钥
 ```
 
@@ -15,23 +15,23 @@ cp .env.docker.example .env
 
 ```bash
 # 构建并启动
-docker-compose up -d
+docker-compose -f config/docker-compose.yml up -d
 
 # 查看日志
-docker-compose logs -f
+docker-compose -f config/docker-compose.yml logs -f
 
 # 停止
-docker-compose down
+docker-compose -f config/docker-compose.yml down
 
 # 重启
-docker-compose restart
+docker-compose -f config/docker-compose.yml restart
 ```
 
 ### 3. 使用 Docker 命令
 
 ```bash
 # 构建镜像
-docker build -t lantern-hedge-bot .
+docker build -f config/Dockerfile -t lantern-hedge-bot .
 
 # 运行（使用环境变量文件）
 docker run -d \
@@ -84,7 +84,7 @@ FILL_TIMEOUT=5             # 订单填充超时(秒)
 
 ```yaml
 command: >
-  python3 hedge_mode.py
+  python3 run_hedge.py
   --exchange grvt
   --ticker BTC
   --size 0.05
@@ -108,10 +108,10 @@ docker-compose logs -f
 日志保存在 `./logs` 目录：
 ```bash
 # 查看交易日志
-tail -f logs/grvt_HYPE_hedge_mode_log.txt
+tail -f logs/hedge_bot_BTC_log.txt
 
 # 查看CSV交易记录
-cat logs/grvt_HYPE_hedge_mode_trades.csv
+cat logs/hedge_bot_BTC_trades.csv
 ```
 
 ## 🔄 更新代码
@@ -233,7 +233,7 @@ docker exec lantern env | grep -E "GRVT|LIGHTER"
 ### 订单不成交
 ```bash
 # 查看应用日志
-docker exec lantern cat logs/grvt_HYPE_hedge_mode_log.txt
+docker exec lantern cat logs/hedge_bot_BTC_log.txt
 
 # 检查网络连接
 docker exec lantern ping -c 3 grvt.io

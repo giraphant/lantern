@@ -17,8 +17,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir grvt-pysdk
 
-# Copy application code
-COPY . .
+# Copy application code and structure
+COPY src ./src
+COPY run_hedge.py .
 
 # Create logs directory
 RUN mkdir -p logs
