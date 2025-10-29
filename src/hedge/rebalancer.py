@@ -44,11 +44,14 @@ class Rebalancer:
         tolerance: Decimal = Decimal("0.01")
     ) -> TradeInstruction:
         """
-        计算如何调整仓位到目标状态。
+        计算如何调整仓位到目标状态（用于打平不平衡）。
+
+        目标：让 GRVT + Lighter = target_total_position (通常是Lighter的仓位)
+        方法：调整GRVT侧的仓位
 
         Args:
             current_position: 当前仓位状态
-            target_total_position: 目标总仓位
+            target_total_position: 目标总仓位（通常等于Lighter仓位，让两边对冲）
             order_size: 每次交易的数量
             tolerance: 允许的偏差范围
 
@@ -63,37 +66,21 @@ class Rebalancer:
             return TradeInstruction(
                 action=TradeAction.HOLD,
                 quantity=Decimal(0),
-                reason=f"Position {current_total} close to target {target_total_position}"
+                reason=f"Position balanced: total={current_total}, target={target_total_position}"
             )
 
-        # 需要增加总仓位
+        # 需要增加GRVT侧仓位（总仓位不足）
         if diff > 0:
-            # 检查GRVT仓位，决定是建仓还是平仓
-            if current_position.grvt_position < target_total_position:
-                return TradeInstruction(
-                    action=TradeAction.BUILD_LONG,
-                    quantity=min(order_size, diff),
-                    reason=f"Building long position towards {target_total_position}"
-                )
-            else:
-                return TradeInstruction(
-                    action=TradeAction.CLOSE_SHORT,
-                    quantity=min(order_size, diff),
-                    reason=f"Closing short position towards {target_total_position}"
-                )
+            return TradeInstruction(
+                action=TradeAction.BUILD_LONG,
+                quantity=min(order_size, abs(diff)),
+                reason=f"Rebalancing: GRVT buy to match Lighter position"
+            )
 
-        # 需要减少总仓位
+        # 需要减少GRVT侧仓位（总仓位过多）
         else:
-            # 检查GRVT仓位，决定是建仓还是平仓
-            if current_position.grvt_position > target_total_position:
-                return TradeInstruction(
-                    action=TradeAction.CLOSE_LONG,
-                    quantity=min(order_size, abs(diff)),
-                    reason=f"Closing long position towards {target_total_position}"
-                )
-            else:
-                return TradeInstruction(
-                    action=TradeAction.BUILD_SHORT,
-                    quantity=min(order_size, abs(diff)),
-                    reason=f"Building short position towards {target_total_position}"
-                )
+            return TradeInstruction(
+                action=TradeAction.CLOSE_LONG,
+                quantity=min(order_size, abs(diff)),
+                reason=f"Rebalancing: GRVT sell to match Lighter position"
+            )
