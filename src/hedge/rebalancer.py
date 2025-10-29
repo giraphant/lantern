@@ -73,18 +73,18 @@ class Rebalancer:
                 reason=f"Position balanced: total={current_total}, target={target_total_position}"
             )
 
-        # total < target: 需要增加净仓位，Lighter卖出
+        # total < target: 净空头过多，需要减少空头 → Lighter买入
         if diff > 0:
             return TradeInstruction(
-                action=TradeAction.BUILD_SHORT,  # Lighter卖出减少其空头，增加净多头
+                action=TradeAction.CLOSE_SHORT,  # Lighter买入，减少空头仓位
                 quantity=min(order_size, abs(diff)),
-                reason=f"Rebalancing: Lighter sell (total={current_total} -> {target_total_position})"
+                reason=f"Rebalancing: Lighter buy to reduce short (total={current_total} -> {target_total_position})"
             )
 
-        # total > target: 需要减少净仓位，Lighter买入
+        # total > target: 净多头过多，需要增加空头 → Lighter卖出
         else:
             return TradeInstruction(
-                action=TradeAction.CLOSE_SHORT,  # Lighter买入增加其空头，减少净多头
+                action=TradeAction.BUILD_SHORT,  # Lighter卖出，增加空头仓位
                 quantity=min(order_size, abs(diff)),
-                reason=f"Rebalancing: Lighter buy (total={current_total} -> {target_total_position})"
+                reason=f"Rebalancing: Lighter sell to increase short (total={current_total} -> {target_total_position})"
             )
