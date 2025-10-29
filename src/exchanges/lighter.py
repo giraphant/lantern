@@ -371,22 +371,32 @@ class LighterClient(BaseExchangeClient):
             raise Exception(f"[CLOSE] Error placing order: {order_result.error_message}")
     
     async def get_order_price(self, side: str = '') -> Decimal:
-        """Get the price of an order with Lighter using official SDK."""
+        """
+        Get the price of an order with Lighter using official SDK.
+
+        Uses aggressive pricing with slippage to ensure immediate fill (taker order):
+        - Buy: best_ask + slippage (eat sell orders)
+        - Sell: best_bid - slippage (eat buy orders)
+        """
         # Get current market prices
         best_bid, best_ask = await self.fetch_bbo_prices(self.config.contract_id)
         if best_bid <= 0 or best_ask <= 0 or best_bid >= best_ask:
             self.logger.log("Invalid bid/ask prices", "ERROR")
             raise ValueError("Invalid bid/ask prices")
 
-        order_price = (best_bid + best_ask) / 2
+        # Apply slippage for immediate execution (taker orders)
+        slippage_ticks = 5  # Number of ticks to cross the spread
+        slippage = self.config.tick_size * slippage_ticks
 
-        active_orders = await self.get_active_orders(self.config.contract_id)
-        close_orders = [order for order in active_orders if order.side == self.config.close_order_side]
-        for order in close_orders:
-            if side == 'buy':
-                order_price = min(order_price, order.price - self.config.tick_size)
-            else:
-                order_price = max(order_price, order.price + self.config.tick_size)
+        if side == 'buy':
+            # Buy: cross the spread by using best_ask + slippage
+            order_price = best_ask + slippage
+        elif side == 'sell':
+            # Sell: cross the spread by using best_bid - slippage
+            order_price = best_bid - slippage
+        else:
+            # Fallback to mid price if side not specified
+            order_price = (best_bid + best_ask) / 2
 
         return order_price
 
