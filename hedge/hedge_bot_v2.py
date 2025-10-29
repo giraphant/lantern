@@ -145,17 +145,48 @@ class HedgeBotV2:
         self.logger.info("✅ Initialization complete")
 
     def _get_lighter_market_id(self, ticker: str) -> int:
-        """Get Lighter market ID for ticker."""
-        market_map = {
-            "BTC": 3,
-            "ETH": 1,
-            "HYPE": 103,
-            # Add more mappings as needed
-        }
-        market_id = market_map.get(ticker.upper())
-        if not market_id:
-            raise ValueError(f"Unknown Lighter market for ticker: {ticker}")
-        return market_id
+        """Get Lighter market ID for ticker dynamically from API."""
+        import requests
+
+        url = "https://mainnet.zklighter.elliot.ai/api/v1/orderBooks"
+        headers = {"accept": "application/json"}
+
+        try:
+            response = requests.get(url, headers=headers, timeout=10)
+            response.raise_for_status()
+
+            data = response.json()
+
+            if "order_books" not in data:
+                raise Exception("Unexpected response format from Lighter API")
+
+            # Find the market ID for the ticker
+            for market in data["order_books"]:
+                if market["symbol"] == ticker.upper():
+                    market_id = market["market_id"]
+                    self.logger.info(f"Found Lighter market ID {market_id} for {ticker}")
+                    return market_id
+
+            # If not found, show available markets
+            available = [m["symbol"] for m in data["order_books"]]
+            raise ValueError(
+                f"Ticker {ticker} not found in Lighter markets. "
+                f"Available: {', '.join(available)}"
+            )
+
+        except requests.RequestException as e:
+            self.logger.error(f"Failed to fetch Lighter markets: {e}")
+            # Fallback to known mappings
+            fallback_map = {
+                "BTC": 3,
+                "ETH": 1,
+                "HYPE": 103,
+            }
+            market_id = fallback_map.get(ticker.upper())
+            if market_id:
+                self.logger.warning(f"Using fallback market ID {market_id} for {ticker}")
+                return market_id
+            raise ValueError(f"Cannot determine Lighter market ID for {ticker}")
 
     async def run(self):
         """Run the hedge bot."""
