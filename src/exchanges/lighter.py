@@ -385,7 +385,7 @@ class LighterClient(BaseExchangeClient):
             raise ValueError("Invalid bid/ask prices")
 
         # Apply slippage for immediate execution (taker orders)
-        slippage_ticks = 10  # Number of ticks to cross the spread
+        slippage_ticks = 100  # Number of ticks to cross the spread
         slippage = self.config.tick_size * slippage_ticks
 
         if side == 'buy':
