@@ -169,6 +169,7 @@ class HedgeBotV2:
         self.order_manager = OrderManager(
             grvt_client=self.grvt_client,
             lighter_client=self.lighter_client,
+            lighter_market_index=lighter_market_id,
             config=self.config,
             logger=self.logger
         )

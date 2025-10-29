@@ -29,11 +29,13 @@ class OrderManager:
         self,
         grvt_client,
         lighter_client,
+        lighter_market_index: int,
         config: TradingConfig,
         logger: Optional[logging.Logger] = None
     ):
         self.grvt_client = grvt_client
         self.lighter_client = lighter_client
+        self.lighter_market_index = lighter_market_index
         self.config = config
         self.logger = logger or logging.getLogger(__name__)
 
@@ -194,14 +196,17 @@ class OrderManager:
             is_ask = (side == "sell")
             client_order_index = int(time.time() * 1000)  # Unique order ID
 
-            # Need market configuration - for now hardcode, should be passed in config
-            # TODO: Get these multipliers from config
-            base_amount_multiplier = 1000000000  # 10^9 for most markets
-            price_multiplier = 1000000000  # 10^9 for most markets
+            # Get market configuration
+            # For now, use standard multipliers - most Lighter markets use 10^9
+            base_amount_multiplier = 1000000000  # 10^9
+            price_multiplier = 1000000000  # 10^9
+
+            # Use the market index passed during initialization
+            market_index = self.lighter_market_index
 
             # Sign the order
             tx_info, error = self.lighter_client.sign_create_order(
-                market_index=25,  # TODO: Get from config (25 is BNB)
+                market_index=market_index,
                 client_order_index=client_order_index,
                 base_amount=int(quantity * base_amount_multiplier),
                 price=int(price * price_multiplier),
@@ -216,17 +221,20 @@ class OrderManager:
                 raise Exception(f"Failed to sign Lighter order: {error}")
 
             # Send the signed transaction
-            # Note: SignerClient signs but doesn't send - need to implement sending
-            order_id = str(client_order_index)
+            tx_hash = await self.lighter_client.send_tx(
+                tx_type=self.lighter_client.TX_TYPE_CREATE_ORDER,
+                tx_info=tx_info
+            )
 
-            if order_id:
+            if tx_hash:
                 self.logger.info(
-                    f"✅ Lighter {side} order placed: {quantity} @ ~{price}"
+                    f"✅ Lighter {side} order sent: {quantity} @ ~{price}"
+                    f" | tx_hash: {tx_hash} | order_id: {client_order_index}"
                 )
 
                 return OrderResult(
                     success=True,
-                    order_id=str(order_id),
+                    order_id=str(client_order_index),
                     filled_quantity=quantity,  # Assume market order fills
                     filled_price=price,
                     status=OrderStatus.FILLED
@@ -234,7 +242,7 @@ class OrderManager:
             else:
                 return OrderResult(
                     success=False,
-                    error_message="Lighter order failed"
+                    error_message="Failed to send Lighter transaction"
                 )
 
         except Exception as e:
