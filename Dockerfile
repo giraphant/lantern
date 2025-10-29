@@ -25,4 +25,4 @@ RUN mkdir -p logs
 
 # Default command - parameters are read from environment variables
 # Set these in Coolify's environment variables section
-CMD ["python3", "hedge_mode.py"]
+CMD ["python3", "hedge/hedge_bot_v2.py"]

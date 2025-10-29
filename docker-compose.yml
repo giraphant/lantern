@@ -20,7 +20,6 @@ services:
       - LIGHTER_PRIVATE_KEY=${LIGHTER_PRIVATE_KEY}
 
       # Trading Parameters
-      - EXCHANGE=${EXCHANGE:-grvt}
       - TICKER=${TICKER:-HYPE}
       - SIZE=${SIZE:-10}
 

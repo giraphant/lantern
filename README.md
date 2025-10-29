@@ -25,8 +25,8 @@ pip install -r requirements.txt
 cp .env.docker.example .env
 # 编辑 .env 文件，配置你的凭证
 
-# 3. 运行机器人
-python hedge_mode.py --exchange grvt --ticker BTC --size 0.1 --iter 20
+# 3. 运行机器人（使用V2架构）
+python hedge/hedge_bot_v2.py
 ```
 
 ## 🏗️ 架构设计 (V2)
