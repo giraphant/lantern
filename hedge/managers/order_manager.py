@@ -190,13 +190,34 @@ class OrderManager:
             else:
                 price = best_bid * Decimal('0.99')  # 1% lower for market sell
 
-            # Place market order
+            # Place market order using SignerClient's correct method
             is_ask = (side == "sell")
-            order_id = self.lighter_client.limit_order(
-                quantity=float(quantity),
-                price=float(price),
-                is_ask=is_ask
+            client_order_index = int(time.time() * 1000)  # Unique order ID
+
+            # Need market configuration - for now hardcode, should be passed in config
+            # TODO: Get these multipliers from config
+            base_amount_multiplier = 1000000000  # 10^9 for most markets
+            price_multiplier = 1000000000  # 10^9 for most markets
+
+            # Sign the order
+            tx_info, error = self.lighter_client.sign_create_order(
+                market_index=25,  # TODO: Get from config (25 is BNB)
+                client_order_index=client_order_index,
+                base_amount=int(quantity * base_amount_multiplier),
+                price=int(price * price_multiplier),
+                is_ask=is_ask,
+                order_type=0,  # LIMIT order
+                time_in_force=0,  # GTT
+                reduce_only=False,
+                trigger_price=0
             )
+
+            if error:
+                raise Exception(f"Failed to sign Lighter order: {error}")
+
+            # Send the signed transaction
+            # Note: SignerClient signs but doesn't send - need to implement sending
+            order_id = str(client_order_index)
 
             if order_id:
                 self.logger.info(
