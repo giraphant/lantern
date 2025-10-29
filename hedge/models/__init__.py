@@ -104,21 +104,38 @@ class SafetyCheckResult:
 @dataclass
 class TradingConfig:
     """Trading configuration."""
+    # API Keys
+    grvt_api_key: str
+    grvt_private_key: str
+    lighter_api_key: str
+    lighter_private_key: str
+    lighter_api_host: str = "https://chain.lighter.xyz/api"
+
     # Basic parameters
-    ticker: str
-    order_quantity: Decimal
+    symbol: str = "BTC"  # Trading symbol
+    ticker: Optional[str] = None  # Deprecated, use symbol
+    order_quantity: Decimal = Decimal("0.3")
 
     # Safety limits
-    max_position: Decimal
-    max_position_diff: Decimal
+    max_position: Decimal = Decimal("10.0")
+    max_position_diff: Decimal = Decimal("0.5")  # Rebalance tolerance
+    rebalance_tolerance: Decimal = Decimal("0.5")  # Same as max_position_diff
+    emergency_stop_loss: Decimal = Decimal("5.0")
     max_open_orders: int = 1
 
     # Cycle parameters
-    build_iterations: int = 30
+    target_cycles: int = 5
+    build_iterations: Optional[int] = None  # Deprecated
     hold_time: int = 180  # seconds
-    cycles: int = 1
+    cycles: Optional[int] = None  # Deprecated, use target_cycles
     direction: Literal["long", "short", "random"] = "long"
+    cycle_interval: int = 60  # seconds between cycles
 
     # Order parameters
     order_timeout: int = 30
     max_retries: int = 3
+    spread_bps: int = 10  # Basis points for post-only orders
+
+    # Control flags
+    block_orders: bool = False
+    block_order_recreation: bool = False

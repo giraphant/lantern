@@ -9,34 +9,30 @@ services:
     # Environment variables - REPLACE WITH YOUR VALUES
     environment:
       # GRVT Configuration
-      - GRVT_TRADING_ACCOUNT_ID=${GRVT_TRADING_ACCOUNT_ID}
-      - GRVT_PRIVATE_KEY=${GRVT_PRIVATE_KEY}
       - GRVT_API_KEY=${GRVT_API_KEY}
-      - GRVT_ENVIRONMENT=prod
+      - GRVT_PRIVATE_KEY=${GRVT_PRIVATE_KEY}
 
       # Lighter Configuration
-      - LIGHTER_ACCOUNT_INDEX=${LIGHTER_ACCOUNT_INDEX}
-      - LIGHTER_API_KEY_INDEX=${LIGHTER_API_KEY_INDEX}
+      - LIGHTER_API_KEY=${LIGHTER_API_KEY}
       - LIGHTER_PRIVATE_KEY=${LIGHTER_PRIVATE_KEY}
+      - LIGHTER_API_HOST=${LIGHTER_API_HOST:-https://chain.lighter.xyz/api}
 
       # Trading Parameters
-      - TICKER=${TICKER:-HYPE}
-      - SIZE=${SIZE:-10}
-
-      # Cycle Mode Parameters
-      - BUILD_UP_ITERATIONS=${BUILD_UP_ITERATIONS:-30}
-      - HOLD_TIME=${HOLD_TIME:-180}
-      - CYCLES=${CYCLES:-999999}
-      - DIRECTION=${DIRECTION:-long}
+      - SYMBOL=${SYMBOL:-BTC}
+      - SIZE=${SIZE:-0.3}
+      - TARGET_CYCLES=${TARGET_CYCLES:-5}
+      - SPREAD_BPS=${SPREAD_BPS:-10}
+      - CYCLE_INTERVAL=${CYCLE_INTERVAL:-60}
+      - ORDER_TIMEOUT=${ORDER_TIMEOUT:-30}
 
       # Safety Parameters
-      - MAX_POSITION=${MAX_POSITION:-10}
-      - MAX_OPEN_ORDERS=${MAX_OPEN_ORDERS:-1}
-      - ORDER_TIMEOUT=${ORDER_TIMEOUT:-30}
-      - MAX_RETRIES=${MAX_RETRIES:-3}
+      - MAX_POSITION=${MAX_POSITION:-10.0}
+      - REBALANCE_TOLERANCE=${REBALANCE_TOLERANCE:-0.5}
+      - EMERGENCY_STOP_LOSS=${EMERGENCY_STOP_LOSS:-5.0}
 
-      # Advanced Parameters
-      - REBALANCE_TOLERANCE=${REBALANCE_TOLERANCE:-0.15}
+      # Control Parameters
+      - BLOCK_ORDERS=${BLOCK_ORDERS:-false}
+      - BLOCK_ORDER_RECREATION=${BLOCK_ORDER_RECREATION:-false}
 
     # Mount logs directory to persist logs
     volumes:

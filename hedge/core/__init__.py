@@ -2,6 +2,6 @@
 Core module initialization.
 """
 
-from .trading_state_machine import TradingStateMachine
+from .trading_engine import TradingEngine
 
-__all__ = ['TradingStateMachine']
+__all__ = ['TradingEngine']

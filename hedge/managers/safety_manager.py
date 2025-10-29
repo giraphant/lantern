@@ -7,9 +7,22 @@ Every trading operation MUST pass safety checks before execution.
 
 import logging
 from decimal import Decimal
+from enum import Enum, IntEnum
 from typing import Optional, List
 
 from hedge.models import Position, SafetyCheckResult, TradingConfig
+
+
+class SafetyLevel(IntEnum):
+    """
+    Safety levels for graduated response.
+    Higher values indicate more severe conditions.
+    """
+    NORMAL = 0          # Normal operation
+    WARNING = 1         # Warning but continue
+    AUTO_REBALANCE = 2  # Trigger automatic rebalancing
+    PAUSE = 3           # Pause new operations
+    EMERGENCY = 4       # Emergency stop all operations
 
 
 class SafetyManager:
@@ -181,6 +194,56 @@ class SafetyManager:
             safe_size = self.max_order_size
 
         return safe_size
+
+    def check_positions(self, grvt_position: float, lighter_position: float) -> SafetyLevel:
+        """
+        Check current positions and return appropriate safety level.
+
+        Args:
+            grvt_position: GRVT position
+            lighter_position: Lighter position
+
+        Returns:
+            SafetyLevel indicating the current safety status
+        """
+        # Calculate imbalance
+        imbalance = abs(grvt_position + lighter_position)
+        max_position = max(abs(grvt_position), abs(lighter_position))
+
+        # Check for emergency conditions
+        if imbalance > self.critical_position_diff:
+            self.logger.critical(f"EMERGENCY: Critical imbalance {imbalance:.4f}")
+            return SafetyLevel.EMERGENCY
+
+        if max_position > self.critical_position_size:
+            self.logger.critical(f"EMERGENCY: Critical position size {max_position:.4f}")
+            return SafetyLevel.EMERGENCY
+
+        # Check for pause conditions
+        if imbalance > self.max_position_diff * 2:
+            self.logger.warning(f"PAUSE: Large imbalance {imbalance:.4f}")
+            return SafetyLevel.PAUSE
+
+        if max_position > self.max_position * 1.5:
+            self.logger.warning(f"PAUSE: Large position {max_position:.4f}")
+            return SafetyLevel.PAUSE
+
+        # Check for auto-rebalance conditions
+        if imbalance > self.max_position_diff:
+            self.logger.info(f"AUTO_REBALANCE: Imbalance {imbalance:.4f} exceeds tolerance")
+            return SafetyLevel.AUTO_REBALANCE
+
+        # Check for warning conditions
+        if imbalance > self.max_position_diff * 0.8:
+            self.logger.debug(f"WARNING: Imbalance {imbalance:.4f} approaching tolerance")
+            return SafetyLevel.WARNING
+
+        if max_position > self.max_position * 0.8:
+            self.logger.debug(f"WARNING: Position {max_position:.4f} approaching limit")
+            return SafetyLevel.WARNING
+
+        # Normal operation
+        return SafetyLevel.NORMAL
 
     async def should_emergency_stop(self, position: Position) -> bool:
         """
