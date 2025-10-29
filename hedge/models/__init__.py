@@ -122,8 +122,3 @@ class TradingConfig:
     # Order parameters
     order_timeout: int = 30
     max_retries: int = 3
-    repost_limit: int = 3
-
-    # Price tolerance
-    price_tolerance_ticks: int = 3
-    min_order_lifetime: int = 30

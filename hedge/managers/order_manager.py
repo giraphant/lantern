@@ -41,7 +41,6 @@ class OrderManager:
         self.max_order_size = config.order_quantity
         self.max_retries = config.max_retries
         self.order_timeout = config.order_timeout
-        self.repost_limit = config.repost_limit
 
         # Track active orders
         self._active_orders: Dict[str, Any] = {}

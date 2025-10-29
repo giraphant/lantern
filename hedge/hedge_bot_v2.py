@@ -227,10 +227,7 @@ async def main():
         cycles=int(os.getenv("CYCLES", "1")),
         direction=os.getenv("DIRECTION", "long"),
         order_timeout=int(os.getenv("ORDER_TIMEOUT", "30")),
-        max_retries=int(os.getenv("MAX_RETRIES", "3")),
-        repost_limit=int(os.getenv("REPOST_LIMIT", "3")),
-        price_tolerance_ticks=int(os.getenv("PRICE_TOLERANCE", "3")),
-        min_order_lifetime=int(os.getenv("MIN_ORDER_LIFETIME", "30"))
+        max_retries=int(os.getenv("MAX_RETRIES", "3"))
     )
 
     # Create and run bot

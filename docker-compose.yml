@@ -23,7 +23,6 @@ services:
       - EXCHANGE=${EXCHANGE:-grvt}
       - TICKER=${TICKER:-HYPE}
       - SIZE=${SIZE:-10}
-      - ITERATIONS=${ITERATIONS:-20}
 
       # Cycle Mode Parameters
       - BUILD_UP_ITERATIONS=${BUILD_UP_ITERATIONS:-30}
@@ -31,19 +30,14 @@ services:
       - CYCLES=${CYCLES:-999999}
       - DIRECTION=${DIRECTION:-long}
 
-      # Safety Parameters (NEW)
+      # Safety Parameters
       - MAX_POSITION=${MAX_POSITION:-10}
       - MAX_OPEN_ORDERS=${MAX_OPEN_ORDERS:-1}
       - ORDER_TIMEOUT=${ORDER_TIMEOUT:-30}
       - MAX_RETRIES=${MAX_RETRIES:-3}
-      - REPOST_LIMIT=${REPOST_LIMIT:-3}
 
       # Advanced Parameters
-      - PRICE_TOLERANCE=${PRICE_TOLERANCE:-3}
-      - MIN_ORDER_LIFETIME=${MIN_ORDER_LIFETIME:-30}
       - REBALANCE_TOLERANCE=${REBALANCE_TOLERANCE:-0.15}
-      - AUTO_REBALANCE=${AUTO_REBALANCE:-true}
-      - FILL_TIMEOUT=${FILL_TIMEOUT:-5}
 
     # Mount logs directory to persist logs
     volumes:
