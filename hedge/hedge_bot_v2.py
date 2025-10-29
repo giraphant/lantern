@@ -12,6 +12,12 @@ import sys
 from decimal import Decimal
 from pathlib import Path
 
+# Suppress verbose logs IMMEDIATELY before any imports
+logging.getLogger().setLevel(logging.WARNING)
+logging.getLogger('root').setLevel(logging.WARNING)
+logging.getLogger('urllib3').setLevel(logging.ERROR)
+logging.getLogger('urllib3.connectionpool').setLevel(logging.ERROR)
+
 import dotenv
 
 # Add parent directory to path
@@ -54,14 +60,27 @@ class HedgeBotV2:
 
     def _setup_logger(self) -> logging.Logger:
         """Setup logging configuration."""
-        # Suppress GRVT SDK debug logs
-        logging.getLogger('pysdk.grvt_ccxt_logging_selector').setLevel(logging.ERROR)
-        logging.getLogger('pysdk').setLevel(logging.ERROR)
-        logging.getLogger('websockets').setLevel(logging.ERROR)
-        logging.getLogger('asyncio').setLevel(logging.ERROR)
-        logging.getLogger('aiohttp').setLevel(logging.ERROR)
-        logging.getLogger('urllib3').setLevel(logging.ERROR)
-        logging.getLogger('root').setLevel(logging.WARNING)
+        # Suppress all verbose logs - be very aggressive
+        suppress_loggers = [
+            'pysdk.grvt_ccxt_logging_selector',
+            'pysdk.grvt_ccxt',
+            'pysdk',
+            'websockets',
+            'websockets.client',
+            'websockets.protocol',
+            'asyncio',
+            'aiohttp',
+            'aiohttp.client',
+            'urllib3',
+            'urllib3.connectionpool',
+            'urllib3.util.retry',
+            'root'
+        ]
+
+        for logger_name in suppress_loggers:
+            logger = logging.getLogger(logger_name)
+            logger.setLevel(logging.ERROR)
+            logger.propagate = False  # Don't propagate to parent
 
         logger = logging.getLogger(f"hedge_bot_v2_{self.config.ticker}")
         logger.setLevel(logging.INFO)
@@ -267,6 +286,11 @@ async def main():
     """Main entry point."""
     # Set root logger to WARNING to suppress verbose logs
     logging.basicConfig(level=logging.WARNING)
+
+    # More aggressive log suppression
+    logging.getLogger().setLevel(logging.WARNING)  # Root logger
+    for logger_name in ['urllib3', 'urllib3.connectionpool', 'root', 'pysdk', 'websockets', 'aiohttp', 'asyncio']:
+        logging.getLogger(logger_name).setLevel(logging.ERROR)
 
     # Load environment variables
     env_path = Path(".env")
