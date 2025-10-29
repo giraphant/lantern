@@ -420,6 +420,28 @@ class LighterClient(BaseExchangeClient):
         else:
             return OrderResult(success=False, error_message='Failed to send cancellation transaction')
 
+    async def cancel_all_orders(self) -> None:
+        """Cancel all active orders for the configured contract."""
+        try:
+            # Get all active orders
+            active_orders = await self.get_active_orders(self.config.contract_id)
+
+            if not active_orders:
+                self.logger.log("No active orders to cancel", "INFO")
+                return
+
+            # Cancel each order
+            for order in active_orders:
+                try:
+                    await self.cancel_order(order.order_id)
+                    self.logger.log(f"Cancelled order: {order.order_id}", "INFO")
+                except Exception as e:
+                    self.logger.log(f"Failed to cancel order {order.order_id}: {e}", "ERROR")
+
+        except Exception as e:
+            self.logger.log(f"Error in cancel_all_orders: {e}", "ERROR")
+            raise
+
     async def get_order_info(self, order_id: str) -> Optional[OrderInfo]:
         """Get order information from Lighter using official SDK."""
         try:
