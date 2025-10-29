@@ -80,41 +80,59 @@ class GrvtClient(BaseExchangeClient):
             raise ValueError(f"Missing required environment variables: {missing_vars}")
 
     async def connect(self) -> None:
-        """Connect to GRVT WebSocket."""
-        try:
-            # Initialize WebSocket client - match the working test implementation
-            loop = asyncio.get_running_loop()
+        """Connect to GRVT WebSocket with error resilience."""
+        max_retries = 3
+        retry_count = 0
 
-            # Import logger from pysdk like in the test file
-            from pysdk.grvt_ccxt_logging_selector import logger
+        while retry_count < max_retries:
+            try:
+                # Initialize WebSocket client - match the working test implementation
+                loop = asyncio.get_running_loop()
 
-            # Parameters for GRVT SDK - match test file structure
-            parameters = {
-                'api_key': self.api_key,
-                'trading_account_id': self.trading_account_id,
-                'api_ws_version': 'v1',
-                'private_key': self.private_key
-            }
+                # Import logger from pysdk like in the test file
+                from pysdk.grvt_ccxt_logging_selector import logger
 
-            self._ws_client = GrvtCcxtWS(
-                env=self.env,
-                loop=loop,
-                logger=logger,  # Add logger parameter like in test file
-                parameters=parameters
-            )
+                # Suppress pysdk logger noise
+                logger.setLevel(logging.ERROR)
 
-            # Initialize and connect
-            await self._ws_client.initialize()
-            await asyncio.sleep(2)  # Wait for connection to establish
+                # Parameters for GRVT SDK - match test file structure
+                parameters = {
+                    'api_key': self.api_key,
+                    'trading_account_id': self.trading_account_id,
+                    'api_ws_version': 'v1',
+                    'private_key': self.private_key
+                }
 
-            # If an order update callback was set before connect, subscribe now
-            if self._order_update_callback is not None:
-                asyncio.create_task(self._subscribe_to_orders(self._order_update_callback))
-                self.logger.log(f"Deferred subscription started for {self.config.contract_id}", "INFO")
+                self._ws_client = GrvtCcxtWS(
+                    env=self.env,
+                    loop=loop,
+                    logger=logger,  # Add logger parameter like in test file
+                    parameters=parameters
+                )
 
-        except Exception as e:
-            self.logger.log(f"Error connecting to GRVT WebSocket: {e}", "ERROR")
-            raise
+                # Initialize and connect
+                await self._ws_client.initialize()
+                await asyncio.sleep(2)  # Wait for connection to establish
+
+                # If an order update callback was set before connect, subscribe now
+                if self._order_update_callback is not None:
+                    asyncio.create_task(self._subscribe_to_orders(self._order_update_callback))
+                    self.logger.log(f"Deferred subscription started for {self.config.contract_id}", "INFO")
+
+                # Success - break the retry loop
+                break
+
+            except (ConnectionResetError, websockets.exceptions.ConnectionClosed) as e:
+                retry_count += 1
+                if retry_count < max_retries:
+                    self.logger.log(f"GRVT connection failed, retrying ({retry_count}/{max_retries}): {e}", "WARNING")
+                    await asyncio.sleep(5)  # Wait before retry
+                else:
+                    self.logger.log(f"Failed to connect to GRVT after {max_retries} attempts", "ERROR")
+                    raise
+            except Exception as e:
+                self.logger.log(f"Error connecting to GRVT WebSocket: {e}", "ERROR")
+                raise
 
     async def disconnect(self) -> None:
         """Disconnect from GRVT."""

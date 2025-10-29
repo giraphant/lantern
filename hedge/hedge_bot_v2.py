@@ -17,6 +17,9 @@ logging.getLogger().setLevel(logging.WARNING)
 logging.getLogger('root').setLevel(logging.WARNING)
 logging.getLogger('urllib3').setLevel(logging.ERROR)
 logging.getLogger('urllib3.connectionpool').setLevel(logging.ERROR)
+logging.getLogger('asyncio').setLevel(logging.ERROR)
+logging.getLogger('asyncio.selector_events').setLevel(logging.ERROR)
+logging.getLogger('pysdk').setLevel(logging.ERROR)
 
 import dotenv
 
