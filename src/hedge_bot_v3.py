@@ -28,6 +28,7 @@ from hedge.safety_checker import SafetyChecker, PositionState, SafetyAction
 from hedge.rebalancer import Rebalancer, TradeAction
 from hedge.trading_executor import TradingExecutor
 from hedge.phase_detector import PhaseDetector, TradingPhase
+from helpers.pushover_notifier import PushoverNotifier
 
 
 class Config:
@@ -50,6 +51,7 @@ class HedgeBotV3:
 
         # 初始化模块
         self.executor = TradingExecutor(self.grvt, self.lighter, self.logger)
+        self.notifier = PushoverNotifier()
 
     def _setup_logger(self):
         """设置日志"""
@@ -160,6 +162,11 @@ class HedgeBotV3:
                     self.logger.error(f"❌ {safety_result.reason}")
                     self.logger.error(f"   Position: {position}")
                     self.logger.error("   Pausing for 60 seconds...")
+                    # 发送安全警告通知
+                    await self.notifier.notify_warning(
+                        message=f"{safety_result.reason}\n\nPosition:\nGRVT: {position.grvt_position}\nLighter: {position.lighter_position}\nTotal: {position.total_position}\n\nBot paused for 60s",
+                        title="⚠️ Safety Limit Triggered"
+                    )
                     await asyncio.sleep(60)
                     continue
 
@@ -237,6 +244,11 @@ class HedgeBotV3:
             self.logger.info("\nShutting down...")
         except Exception as e:
             self.logger.error(f"Fatal error: {e}", exc_info=True)
+            # 发送错误通知
+            await self.notifier.notify_critical(
+                message=f"Bot crashed with error:\n{str(e)}\n\nBot has stopped running!",
+                title="🔴 Hedge Bot Crashed"
+            )
         finally:
             await self.cleanup()
 

@@ -87,7 +87,17 @@ TRADING_SYMBOL=BNB       # 默认: BNB
 TRADING_SIZE=0.1         # 默认: 0.1（每次交易数量）
 CYCLE_TARGET=5           # 默认: 5（目标循环次数）
 CYCLE_HOLD_TIME=180      # 默认: 180秒（持仓时间）
+
+# Pushover 推送通知（可选）
+PUSHOVER_USER_KEY=your_pushover_user_key
+PUSHOVER_API_TOKEN=your_pushover_app_token
 ```
+
+**获取Pushover配置：**
+1. 访问 https://pushover.net/ 注册账户
+2. 获取 User Key（在首页显示）
+3. 创建应用获取 API Token
+4. 配置环境变量后，bot会在发生错误或安全限制时发送推送通知
 
 ### 3. 运行
 

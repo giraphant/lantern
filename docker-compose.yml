@@ -27,6 +27,10 @@ services:
       - CYCLE_TARGET=${CYCLE_TARGET:-5}
       - CYCLE_HOLD_TIME=${CYCLE_HOLD_TIME:-180}
 
+      # Pushover Notifications (Optional)
+      - PUSHOVER_USER_KEY=${PUSHOVER_USER_KEY:-}
+      - PUSHOVER_API_TOKEN=${PUSHOVER_API_TOKEN:-}
+
     # Mount logs directory and .env file
     volumes:
       - ./logs:/app/logs
