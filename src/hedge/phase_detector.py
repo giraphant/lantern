@@ -64,6 +64,14 @@ class PhaseDetector:
         Returns:
             PhaseInfo: 当前阶段信息
         """
+        # 情况0：如果仓位接近0，无论历史如何，都从头开始建仓
+        current_grvt = abs(position.grvt_position)
+        if current_grvt < order_size * Decimal("0.1"):
+            return PhaseInfo(
+                phase=TradingPhase.BUILDING,
+                reason="Position near zero, starting fresh build phase"
+            )
+
         # 情况1：没有订单历史，开始建仓
         if last_order_side is None or last_order_time is None:
             return PhaseInfo(
