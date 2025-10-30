@@ -82,6 +82,11 @@ class HedgeBotV3:
         self.target_cycles = int(os.getenv("CYCLE_TARGET", "5"))
         self.hold_time = int(os.getenv("CYCLE_HOLD_TIME", "180"))
 
+        # 交易方向：long=多头策略, short=空头策略
+        self.direction = os.getenv("TRADING_DIRECTION", "long").lower()
+        if self.direction not in ["long", "short"]:
+            raise ValueError(f"Invalid TRADING_DIRECTION: {self.direction}. Must be 'long' or 'short'")
+
         # 安全参数
         self.max_position_per_side = self.order_quantity * self.target_cycles * Decimal("1.5")
         self.max_total_position = self.order_quantity * self.target_cycles * Decimal("1.5")
@@ -254,10 +259,17 @@ class HedgeBotV3:
 
     async def _handle_building_phase(self, position: PositionState):
         """处理建仓阶段 - 执行固定的对冲交易"""
-        self.logger.info(f"📈 BUILDING: GRVT buy + Lighter sell {self.order_quantity}")
+        if self.direction == "long":
+            # 多头策略：GRVT buy + Lighter sell
+            self.logger.info(f"📈 BUILDING (LONG): GRVT buy + Lighter sell {self.order_quantity}")
+            action = TradeAction.BUILD_LONG
+        else:
+            # 空头策略：GRVT sell + Lighter buy
+            self.logger.info(f"📈 BUILDING (SHORT): GRVT sell + Lighter buy {self.order_quantity}")
+            action = TradeAction.CLOSE_LONG
 
         result = await self.executor.execute_trade(
-            action=TradeAction.BUILD_LONG,  # 多头策略：建仓=GRVT buy + Lighter sell
+            action=action,
             quantity=self.order_quantity,
             wait_for_fill=True,
             fill_timeout=30
@@ -269,10 +281,17 @@ class HedgeBotV3:
 
     async def _handle_winddown_phase(self, position: PositionState):
         """处理平仓阶段 - 执行固定的对冲交易"""
-        self.logger.info(f"📉 WINDING DOWN: GRVT sell + Lighter buy {self.order_quantity}")
+        if self.direction == "long":
+            # 多头策略：GRVT sell + Lighter buy
+            self.logger.info(f"📉 WINDING DOWN (LONG): GRVT sell + Lighter buy {self.order_quantity}")
+            action = TradeAction.CLOSE_LONG
+        else:
+            # 空头策略：GRVT buy + Lighter sell
+            self.logger.info(f"📉 WINDING DOWN (SHORT): GRVT buy + Lighter sell {self.order_quantity}")
+            action = TradeAction.BUILD_LONG
 
         result = await self.executor.execute_trade(
-            action=TradeAction.CLOSE_LONG,  # 多头策略：平仓=GRVT sell + Lighter buy
+            action=action,
             quantity=self.order_quantity,
             wait_for_fill=True,
             fill_timeout=30

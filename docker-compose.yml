@@ -26,6 +26,7 @@ services:
       - TRADING_SIZE=${TRADING_SIZE:-0.1}
       - CYCLE_TARGET=${CYCLE_TARGET:-5}
       - CYCLE_HOLD_TIME=${CYCLE_HOLD_TIME:-180}
+      - TRADING_DIRECTION=${TRADING_DIRECTION:-long}
 
       # Pushover Notifications (Optional)
       - PUSHOVER_USER_KEY=${PUSHOVER_USER_KEY:-}

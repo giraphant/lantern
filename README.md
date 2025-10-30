@@ -51,9 +51,11 @@ lantern/
 4. 阶段检测（从订单历史） → BUILDING / HOLDING / WINDING_DOWN
   ↓
 5. 根据阶段执行对应操作
-   - BUILDING: GRVT 买入 + Lighter 卖出
+   - BUILDING（多头）: GRVT 买入 + Lighter 卖出
+   - BUILDING（空头）: GRVT 卖出 + Lighter 买入
    - HOLDING: 等待持仓时间
-   - WINDING_DOWN: GRVT 卖出 + Lighter 买入
+   - WINDING_DOWN（多头）: GRVT 卖出 + Lighter 买入
+   - WINDING_DOWN（空头）: GRVT 买入 + Lighter 卖出
   ↓
 循环继续
 ```
@@ -87,6 +89,7 @@ TRADING_SYMBOL=BNB       # 默认: BNB
 TRADING_SIZE=0.1         # 默认: 0.1（每次交易数量）
 CYCLE_TARGET=5           # 默认: 5（目标循环次数）
 CYCLE_HOLD_TIME=180      # 默认: 180秒（持仓时间）
+TRADING_DIRECTION=long   # 默认: long（long=多头策略, short=空头策略）
 
 # Pushover 推送通知（可选）
 PUSHOVER_USER_KEY=your_pushover_user_key
@@ -143,6 +146,34 @@ tail -f hedge_bot.log  # 查看日志
 - **Lighter**: 吃单商（taker），使用市价单 + 滑点，立即成交
 - **对冲方式**: GRVT 买入时 Lighter 卖出，实现完全对冲
 - **循环模式**: 建仓 → 持仓 → 平仓 → 重复
+
+### 交易方向配置
+
+通过 `TRADING_DIRECTION` 环境变量控制策略方向：
+
+**多头策略 (long)**:
+- 建仓: GRVT 买入 + Lighter 卖出（做多 GRVT，做空 Lighter）
+- 平仓: GRVT 卖出 + Lighter 买入
+- 适用场景: 预期 GRVT 价格走强或 funding rate 为负
+
+**空头策略 (short)**:
+- 建仓: GRVT 卖出 + Lighter 买入（做空 GRVT，做多 Lighter）
+- 平仓: GRVT 买入 + Lighter 卖出
+- 适用场景: 预期 GRVT 价格走弱或 funding rate 为正
+
+### 多实例部署
+
+可以通过 Docker Compose 运行多个独立实例，每个实例配置不同的币种和方向：
+
+```bash
+# 实例 1: BNB 多头
+TRADING_SYMBOL=BNB TRADING_DIRECTION=long docker-compose up -d
+
+# 实例 2: ETH 空头
+TRADING_SYMBOL=ETH TRADING_DIRECTION=short docker-compose up -d
+```
+
+每个实例完全独立运行，互不干扰。
 
 ## 🛠️ 故障排查
 
