@@ -32,11 +32,6 @@ services:
       - PUSHOVER_USER_KEY=${PUSHOVER_USER_KEY:-}
       - PUSHOVER_API_TOKEN=${PUSHOVER_API_TOKEN:-}
 
-    # Mount logs directory and .env file
-    volumes:
-      - ./logs:/app/logs
-      - ./.env:/app/.env:ro
-
     # Health check - verify the bot process is running
     healthcheck:
       test: ["CMD-SHELL", "pgrep -f 'python.*hedge_bot_v3' || exit 1"]
