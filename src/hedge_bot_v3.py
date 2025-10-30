@@ -254,10 +254,10 @@ class HedgeBotV3:
 
     async def _handle_building_phase(self, position: PositionState):
         """处理建仓阶段 - 执行固定的对冲交易"""
-        self.logger.info(f"📈 BUILDING: GRVT buy + Lighter sell {self.order_quantity}")
+        self.logger.info(f"📈 BUILDING: GRVT sell + Lighter buy {self.order_quantity}")
 
         result = await self.executor.execute_trade(
-            action=TradeAction.BUILD_LONG,
+            action=TradeAction.CLOSE_LONG,  # GRVT空头策略：建仓=GRVT sell + Lighter buy
             quantity=self.order_quantity,
             wait_for_fill=True,
             fill_timeout=30
@@ -269,10 +269,10 @@ class HedgeBotV3:
 
     async def _handle_winddown_phase(self, position: PositionState):
         """处理平仓阶段 - 执行固定的对冲交易"""
-        self.logger.info(f"📉 WINDING DOWN: GRVT sell + Lighter buy {self.order_quantity}")
+        self.logger.info(f"📉 WINDING DOWN: GRVT buy + Lighter sell {self.order_quantity}")
 
         result = await self.executor.execute_trade(
-            action=TradeAction.CLOSE_LONG,
+            action=TradeAction.BUILD_LONG,  # GRVT空头策略：平仓=GRVT buy + Lighter sell
             quantity=self.order_quantity,
             wait_for_fill=True,
             fill_timeout=30
