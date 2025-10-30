@@ -83,8 +83,8 @@ class HedgeBotV3:
         self.hold_time = int(os.getenv("CYCLE_HOLD_TIME", "180"))
 
         # 安全参数
-        self.max_position_per_side = self.order_quantity * self.target_cycles * Decimal("2")
-        self.max_total_position = self.order_quantity * self.target_cycles * Decimal("2")
+        self.max_position_per_side = self.order_quantity * self.target_cycles * Decimal("1.5")
+        self.max_total_position = self.order_quantity * self.target_cycles * Decimal("1.5")
         self.max_imbalance = self.order_quantity * Decimal("3")
 
         if not all([self.grvt_api_key, self.grvt_private_key, self.lighter_private_key]):
@@ -133,6 +133,9 @@ class HedgeBotV3:
             # 检查初始仓位
             position = await self.executor.get_positions()
             self.logger.info(f"Initial position: GRVT={position.grvt_position}, Lighter={position.lighter_position}")
+
+            # 启动时标记：第一轮强制BUILDING
+            first_run = True
 
             # 主循环 - 完全无状态，每次都从交易所获取真实状态
             while True:
@@ -204,6 +207,14 @@ class HedgeBotV3:
                         continue  # 打平后重新开始，跳过阶段判断和正常交易
 
                 # ========== 步骤4: 阶段判断 ==========
+                # 启动时第一轮强制BUILDING，忽略历史订单
+                if first_run:
+                    self.logger.info(f"📍 Phase: BUILDING (first run, ignoring history)")
+                    await self._handle_building_phase(position)
+                    first_run = False
+                    await asyncio.sleep(2)
+                    continue
+
                 last_order = await self.grvt.get_last_filled_order(
                     contract_id=self.grvt.config.contract_id
                 )

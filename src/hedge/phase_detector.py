@@ -77,11 +77,11 @@ class PhaseDetector:
             current_grvt = abs(position.grvt_position)
             target_grvt = order_size * target_cycles
 
-            # 如果仓位超过目标，强制继续WINDING DOWN
-            if current_grvt > target_grvt * Decimal("1.1"):
+            # 如果仓位超过目标1.5倍，强制继续WINDING DOWN
+            if current_grvt > target_grvt * Decimal("1.5"):
                 return PhaseInfo(
                     phase=TradingPhase.WINDING_DOWN,
-                    reason=f"Position exceeded target ({current_grvt} > {target_grvt}), forcing winddown"
+                    reason=f"Position exceeded target ({current_grvt} > {target_grvt * Decimal('1.5')}), forcing winddown"
                 )
 
             if current_grvt < order_size * Decimal("0.1"):
