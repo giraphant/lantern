@@ -71,13 +71,13 @@ class PhaseDetector:
                 reason="No order history, starting build phase"
             )
 
-        # 情况2：最后一笔是卖出（平仓方向），说明在平仓中
+        # 情况2：最后一笔是卖出（多头策略的平仓方向），说明在平仓中
         if last_order_side == "sell":
             # 检查是否已经平完了
             current_grvt = abs(position.grvt_position)
             target_grvt = order_size * target_cycles
 
-            # 如果仓位超过目标，说明出问题了，强制继续WINDING DOWN
+            # 如果仓位超过目标，强制继续WINDING DOWN
             if current_grvt > target_grvt * Decimal("1.1"):
                 return PhaseInfo(
                     phase=TradingPhase.WINDING_DOWN,
@@ -97,7 +97,7 @@ class PhaseDetector:
                     reason=f"Winding down, remaining position: {current_grvt}"
                 )
 
-        # 情况3：最后一笔是买入（建仓方向），检查持仓时间
+        # 情况3：最后一笔是买入（多头策略的建仓方向），检查持仓时间
         if last_order_side == "buy":
             time_since_last_build = (datetime.utcnow() - last_order_time).total_seconds()
 
