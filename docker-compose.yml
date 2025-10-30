@@ -32,6 +32,14 @@ services:
       - ./logs:/app/logs
       - ./.env:/app/.env:ro
 
+    # Health check - verify the bot process is running
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'python.*hedge_bot_v3' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
     # Optional: Set logging driver
     logging:
       driver: "json-file"
