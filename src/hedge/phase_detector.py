@@ -75,6 +75,16 @@ class PhaseDetector:
         if last_order_side == "sell":
             # 检查是否已经平完了
             current_grvt = abs(position.grvt_position)
+            target_grvt = order_size * target_cycles
+
+            # 如果仓位超过目标，说明出问题了，强制停止
+            if current_grvt > target_grvt * Decimal("1.2"):
+                return PhaseInfo(
+                    phase=TradingPhase.HOLDING,
+                    reason=f"Position exceeded target ({current_grvt} > {target_grvt}), pausing",
+                    time_remaining=999999
+                )
+
             if current_grvt < order_size * Decimal("0.1"):
                 # 仓位接近0，平仓完成，准备重新建仓
                 return PhaseInfo(

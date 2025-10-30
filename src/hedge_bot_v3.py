@@ -222,7 +222,7 @@ class HedgeBotV3:
                     last_order_time=last_order_time
                 )
 
-                self.logger.debug(f"📍 Phase: {phase_info.phase.value} - {phase_info.reason}")
+                self.logger.info(f"📍 Phase: {phase_info.phase.value} | Last order: {last_order_side} | {phase_info.reason}")
 
                 # ========== 步骤5: 根据阶段执行对应操作 ==========
                 if phase_info.phase == TradingPhase.BUILDING:
