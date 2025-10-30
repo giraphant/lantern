@@ -113,6 +113,8 @@ class TradingExecutor:
         Returns:
             ExecutionResult
         """
+        self.logger.info(f"🔧 Executing action: {action.value}")
+
         if action == TradeAction.HOLD:
             return ExecutionResult(success=True)
 
