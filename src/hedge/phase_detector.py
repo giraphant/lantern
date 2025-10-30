@@ -1,10 +1,9 @@
 """
-阶段检测器 - 纯函数，从交易所数据判断当前阶段。
+决策器 - 纯函数，原子化判断每一轮该做什么。
 
 职责：
-1. 根据仓位和订单历史判断当前处于哪个阶段
-2. 判断是否应该继续建仓、持仓等待、或开始平仓
-3. 不执行任何操作，只返回判断结果
+根据当前状态（仓位 + 时间），决定这一轮应该执行什么操作。
+完全无状态，每轮独立判断。
 """
 
 from decimal import Decimal
@@ -16,24 +15,24 @@ from hedge.safety_checker import PositionState
 
 
 class TradingPhase(Enum):
-    """交易阶段"""
-    BUILDING = "BUILDING"              # 建仓中
-    HOLDING = "HOLDING"                # 持仓等待中
-    WINDING_DOWN = "WINDING_DOWN"      # 平仓中
+    """交易操作"""
+    BUILDING = "BUILDING"              # 建仓
+    HOLDING = "HOLDING"                # 持仓等待
+    WINDING_DOWN = "WINDING_DOWN"      # 平仓
 
 
 class PhaseInfo(NamedTuple):
-    """阶段信息"""
+    """决策信息"""
     phase: TradingPhase
     reason: str
-    time_remaining: Optional[int] = None  # 如果在HOLDING，剩余多少秒
+    time_remaining: Optional[int] = None
 
 
 class PhaseDetector:
     """
-    阶段检测器 - 纯函数式设计。
+    决策器 - 纯函数式设计。
 
-    从交易所的真实数据（仓位 + 订单历史）推断当前应该处于哪个阶段。
+    每轮原子化判断：给定当前状态，这一轮该做什么？
     """
 
     @staticmethod
@@ -46,90 +45,63 @@ class PhaseDetector:
         last_order_time: Optional[datetime] = None
     ) -> PhaseInfo:
         """
-        从交易所数据检测当前阶段。
+        原子化判断：这一轮该做什么？
 
-        判断顺序：
-        1. 先看仓位大小（是否接近0或超标）
-        2. 再看订单方向（buy=建仓中, sell=平仓中）
-        3. 根据具体情况判断下一步
+        判断逻辑（按顺序）：
+        1. 仓位接近0 → BUILD
+        2. 超时（最后一笔buy订单时间 >= hold_time）→ WINDDOWN
+        3. 仓位 < target → BUILD
+        4. 其他（仓位达标且未超时）→ WAIT
 
         Args:
             position: 当前仓位状态
             target_cycles: 目标循环次数
             order_size: 每次订单大小
             hold_time: 持仓时间（秒）
-            last_order_side: 最后一笔成交订单的方向（"buy"或"sell"）
-            last_order_time: 最后一笔成交订单的时间
+            last_order_side: 最后一笔成交订单的方向（仅用于记录）
+            last_order_time: 最后一笔成交订单的时间（用于计算超时）
 
         Returns:
-            PhaseInfo: 当前阶段信息
+            PhaseInfo: 这一轮应该做什么
         """
         current_grvt = abs(position.grvt_position)
         target_grvt = order_size * target_cycles
 
-        # ========== 第一优先级：仓位大小判断 ==========
+        # 计算距离最后一笔buy订单的时间
+        time_since_last_build = None
+        if last_order_time:
+            time_since_last_build = (datetime.utcnow() - last_order_time).total_seconds()
 
-        # 仓位接近0 → 从头开始建仓
+        # ========== 判断1: 仓位接近0 → BUILD ==========
         if current_grvt < order_size * Decimal("0.1"):
             return PhaseInfo(
                 phase=TradingPhase.BUILDING,
-                reason="Position near zero, starting build"
+                reason="Position near zero, build"
             )
 
-        # 仓位超标（>1.5倍目标）→ 强制平仓
-        if current_grvt > target_grvt * Decimal("1.5"):
+        # ========== 判断2: 超时 → WINDDOWN ==========
+        if time_since_last_build and time_since_last_build >= hold_time:
             return PhaseInfo(
                 phase=TradingPhase.WINDING_DOWN,
-                reason=f"Position exceeded ({current_grvt:.2f} > {target_grvt * Decimal('1.5'):.2f}), forcing winddown"
+                reason=f"Timeout ({int(time_since_last_build)}s >= {hold_time}s), winddown"
             )
 
-        # ========== 第二优先级：没有订单历史 ==========
-
-        if last_order_side is None or last_order_time is None:
+        # ========== 判断3: 仓位 < target → BUILD ==========
+        if current_grvt < target_grvt:
             return PhaseInfo(
                 phase=TradingPhase.BUILDING,
-                reason="No order history, starting build"
+                reason=f"Building: {current_grvt:.2f}/{target_grvt:.2f}"
             )
 
-        # ========== 第三优先级：根据最后订单方向判断 ==========
+        # ========== 判断4: 其他 → WAIT ==========
+        time_remaining = None
+        if time_since_last_build:
+            time_remaining = int(hold_time - time_since_last_build)
 
-        # 最后一笔是 sell（平仓中）→ 继续平仓
-        if last_order_side == "sell":
-            return PhaseInfo(
-                phase=TradingPhase.WINDING_DOWN,
-                reason=f"Winding down, remaining: {current_grvt:.2f}"
-            )
-
-        # 最后一笔是 buy（建仓中）→ 检查是否该进入下一阶段
-        if last_order_side == "buy":
-            time_since_last = (datetime.utcnow() - last_order_time).total_seconds()
-
-            # 还没建到目标80% → 继续建仓
-            if current_grvt < target_grvt * Decimal("0.8"):
-                return PhaseInfo(
-                    phase=TradingPhase.BUILDING,
-                    reason=f"Building: {current_grvt:.2f}/{target_grvt:.2f}"
-                )
-
-            # 已达目标，但持仓时间不够 → HOLDING
-            if time_since_last < hold_time:
-                time_remaining = int(hold_time - time_since_last)
-                return PhaseInfo(
-                    phase=TradingPhase.HOLDING,
-                    reason=f"Holding: {time_remaining}s remaining",
-                    time_remaining=time_remaining
-                )
-
-            # 已达目标且持仓时间够了 → 开始平仓
-            return PhaseInfo(
-                phase=TradingPhase.WINDING_DOWN,
-                reason=f"Hold time reached ({int(time_since_last)}s >= {hold_time}s), starting winddown"
-            )
-
-        # 默认：建仓
         return PhaseInfo(
-            phase=TradingPhase.BUILDING,
-            reason="Default: building"
+            phase=TradingPhase.HOLDING,
+            reason=f"Position reached, holding ({time_remaining}s remaining)" if time_remaining else "Position reached, holding",
+            time_remaining=time_remaining
         )
 
     @staticmethod
