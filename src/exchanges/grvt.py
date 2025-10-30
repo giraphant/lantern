@@ -301,6 +301,8 @@ class GrvtClient(BaseExchangeClient):
                                     side: str) -> OrderResult:
         """Place a post only order with GRVT using official SDK."""
 
+        self.logger.log(f"🔍 GRVT placing order: side={side}, quantity={quantity}, price={price}", "INFO")
+
         # Place the order using GRVT SDK
         order_result = self.rest_client.create_limit_order(
             symbol=contract_id,
