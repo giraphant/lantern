@@ -3,7 +3,7 @@ version: '3.8'
 services:
   lantern:
     build:
-      context: ..
+      context: .
       dockerfile: config/Dockerfile
     container_name: lantern-hedge-bot-v3
     restart: unless-stopped
@@ -29,8 +29,8 @@ services:
 
     # Mount logs directory and .env file
     volumes:
-      - ../logs:/app/logs
-      - ../.env:/app/.env:ro
+      - ./logs:/app/logs
+      - ./.env:/app/.env:ro
 
     # Optional: Set logging driver
     logging:
