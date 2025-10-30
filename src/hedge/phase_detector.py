@@ -48,10 +48,10 @@ class PhaseDetector:
         """
         从交易所数据检测当前阶段。
 
-        核心逻辑：看最后一笔成交订单的方向
-        - 如果是建仓方向（buy）→ 检查持仓时间
-        - 如果是平仓方向（sell）→ 正在平仓中或已平完
-        - 如果没有订单 → 开始建仓
+        判断顺序：
+        1. 先看仓位大小（是否接近0或超标）
+        2. 再看订单方向（buy=建仓中, sell=平仓中）
+        3. 根据具体情况判断下一步
 
         Args:
             position: 当前仓位状态
@@ -64,77 +64,67 @@ class PhaseDetector:
         Returns:
             PhaseInfo: 当前阶段信息
         """
-        # 情况0：如果仓位接近0，无论历史如何，都从头开始建仓
         current_grvt = abs(position.grvt_position)
+        target_grvt = order_size * target_cycles
+
+        # ========== 第一优先级：仓位大小判断 ==========
+
+        # 仓位接近0 → 从头开始建仓
         if current_grvt < order_size * Decimal("0.1"):
             return PhaseInfo(
                 phase=TradingPhase.BUILDING,
-                reason="Position near zero, starting fresh build phase"
+                reason="Position near zero, starting build"
             )
 
-        # 情况1：没有订单历史，开始建仓
+        # 仓位超标（>1.5倍目标）→ 强制平仓
+        if current_grvt > target_grvt * Decimal("1.5"):
+            return PhaseInfo(
+                phase=TradingPhase.WINDING_DOWN,
+                reason=f"Position exceeded ({current_grvt:.2f} > {target_grvt * Decimal('1.5'):.2f}), forcing winddown"
+            )
+
+        # ========== 第二优先级：没有订单历史 ==========
+
         if last_order_side is None or last_order_time is None:
             return PhaseInfo(
                 phase=TradingPhase.BUILDING,
-                reason="No order history, starting build phase"
+                reason="No order history, starting build"
             )
 
-        # 情况2：最后一笔是卖出（多头策略的平仓方向），说明在平仓中
+        # ========== 第三优先级：根据最后订单方向判断 ==========
+
+        # 最后一笔是 sell（平仓中）→ 继续平仓
         if last_order_side == "sell":
-            # 检查是否已经平完了
-            current_grvt = abs(position.grvt_position)
-            target_grvt = order_size * target_cycles
+            return PhaseInfo(
+                phase=TradingPhase.WINDING_DOWN,
+                reason=f"Winding down, remaining: {current_grvt:.2f}"
+            )
 
-            # 如果仓位超过目标1.5倍，强制继续WINDING DOWN
-            if current_grvt > target_grvt * Decimal("1.5"):
-                return PhaseInfo(
-                    phase=TradingPhase.WINDING_DOWN,
-                    reason=f"Position exceeded target ({current_grvt} > {target_grvt * Decimal('1.5')}), forcing winddown"
-                )
-
-            if current_grvt < order_size * Decimal("0.1"):
-                # 仓位接近0，平仓完成，准备重新建仓
-                return PhaseInfo(
-                    phase=TradingPhase.BUILDING,
-                    reason="Winddown complete, ready to rebuild"
-                )
-            else:
-                # 还有仓位，继续平仓
-                return PhaseInfo(
-                    phase=TradingPhase.WINDING_DOWN,
-                    reason=f"Winding down, remaining position: {current_grvt}"
-                )
-
-        # 情况3：最后一笔是买入（多头策略的建仓方向），检查持仓时间
+        # 最后一笔是 buy（建仓中）→ 检查是否该进入下一阶段
         if last_order_side == "buy":
-            time_since_last_build = (datetime.utcnow() - last_order_time).total_seconds()
+            time_since_last = (datetime.utcnow() - last_order_time).total_seconds()
 
-            # 检查是否达到目标仓位
-            target_grvt = order_size * target_cycles
-            current_grvt = abs(position.grvt_position)
-
-            # 如果还没达到目标，继续建仓
+            # 还没建到目标80% → 继续建仓
             if current_grvt < target_grvt * Decimal("0.8"):
                 return PhaseInfo(
                     phase=TradingPhase.BUILDING,
-                    reason=f"Building position: {current_grvt}/{target_grvt}"
+                    reason=f"Building: {current_grvt:.2f}/{target_grvt:.2f}"
                 )
 
-            # 达到目标了，检查持仓时间
-            if time_since_last_build >= hold_time:
-                # 持仓时间够了，开始平仓
-                return PhaseInfo(
-                    phase=TradingPhase.WINDING_DOWN,
-                    reason=f"Hold time {int(time_since_last_build)}s >= {hold_time}s, starting winddown"
-                )
-            else:
-                # 还在持仓期内，等待
-                time_remaining = int(hold_time - time_since_last_build)
+            # 已达目标，但持仓时间不够 → HOLDING
+            if time_since_last < hold_time:
+                time_remaining = int(hold_time - time_since_last)
                 return PhaseInfo(
                     phase=TradingPhase.HOLDING,
-                    reason=f"Target reached, holding for {time_remaining}s more",
+                    reason=f"Holding: {time_remaining}s remaining",
                     time_remaining=time_remaining
                 )
+
+            # 已达目标且持仓时间够了 → 开始平仓
+            return PhaseInfo(
+                phase=TradingPhase.WINDING_DOWN,
+                reason=f"Hold time reached ({int(time_since_last)}s >= {hold_time}s), starting winddown"
+            )
 
         # 默认：建仓
         return PhaseInfo(
