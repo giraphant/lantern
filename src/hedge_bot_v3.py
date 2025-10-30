@@ -209,8 +209,11 @@ class HedgeBotV3:
                         continue  # 打平后重新开始，跳过阶段判断和正常交易
 
                 # ========== 步骤4: 阶段判断 ==========
+                # 根据策略方向确定BUILD阶段的交易方向
+                build_side = "buy" if self.direction == "long" else "sell"
                 last_order = await self.grvt.get_last_filled_order(
-                    contract_id=self.grvt.config.contract_id
+                    contract_id=self.grvt.config.contract_id,
+                    build_side=build_side
                 )
 
                 last_order_side = None

@@ -596,33 +596,36 @@ class GrvtClient(BaseExchangeClient):
 
         return orders
 
-    async def get_last_filled_order(self, contract_id: str) -> Optional[Tuple[str, datetime]]:
+    async def get_last_filled_order(self, contract_id: str, build_side: str = "buy") -> Optional[Tuple[str, datetime]]:
         """
-        获取最后一笔已成交的买单的方向和时间。
+        获取最后一笔已成交的BUILD订单的方向和时间。
 
-        注意：只返回买单（buy），用于判断何时开始WINDING_DOWN。
-        卖单不影响超时判断，这样WINDING_DOWN过程中不会重置计时器。
+        注意：只返回BUILD方向的订单，用于判断何时开始WINDING_DOWN。
+        WINDDOWN订单不影响超时判断，这样WINDING_DOWN过程中不会重置计时器。
 
         Args:
             contract_id: 合约ID
+            build_side: BUILD阶段的交易方向
+                - "buy" for long策略 (GRVT买入建仓)
+                - "sell" for short策略 (GRVT卖出建仓)
 
         Returns:
-            Tuple[str, datetime]: (方向="buy", 成交时间)，如果没有则返回None
+            Tuple[str, datetime]: (方向, 成交时间)，如果没有则返回None
         """
         orders = await self.get_order_history(contract_id=contract_id, limit=100)
 
-        # 只筛选出已成交的买单
-        buy_orders = [
+        # 只筛选出已成交的BUILD方向订单
+        build_orders = [
             order for order in orders
-            if order.status == 'FILLED' and order.side == 'buy' and order.filled_time
+            if order.status == 'FILLED' and order.side == build_side and order.filled_time
         ]
 
-        if not buy_orders:
+        if not build_orders:
             return None
 
-        # 返回最新的买单
-        last_buy_order = max(buy_orders, key=lambda x: x.filled_time)
-        return (last_buy_order.side, last_buy_order.filled_time)
+        # 返回最新的BUILD订单
+        last_build_order = max(build_orders, key=lambda x: x.filled_time)
+        return (last_build_order.side, last_build_order.filled_time)
 
     async def get_active_orders(self, contract_id: str) -> List[OrderInfo]:
         """Get active orders for a contract."""
