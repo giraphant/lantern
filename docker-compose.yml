@@ -35,6 +35,10 @@ services:
       - PUSHOVER_USER_KEY=${PUSHOVER_USER_KEY:-}
       - PUSHOVER_API_TOKEN=${PUSHOVER_API_TOKEN:-}
 
+      # Telegram Bot (Optional)
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+
     # Health check - verify the bot process is running
     healthcheck:
       test: ["CMD-SHELL", "pgrep -f 'python.*hedge_bot_funding' || exit 1"]

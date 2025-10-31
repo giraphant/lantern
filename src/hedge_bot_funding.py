@@ -33,6 +33,7 @@ from hedge.funding_rate_normalizer import (
 )
 from hedge.funding_rate_checker import FundingRateChecker, FundingAction
 from helpers.pushover_notifier import PushoverNotifier
+from helpers.telegram_interactive_bot import TelegramInteractiveBot
 
 
 class Config:
@@ -56,6 +57,9 @@ class HedgeBotFunding:
         # 初始化模块
         self.executor = TradingExecutor(self.grvt, self.lighter, self.logger)
         self.notifier = PushoverNotifier()
+
+        # 初始化Telegram Bot（如果配置了）
+        self.telegram_bot = self._init_telegram_bot()
 
     def _setup_logger(self):
         """设置日志"""
@@ -124,14 +128,44 @@ class HedgeBotFunding:
         )
         return LighterClient(config)
 
+    def _init_telegram_bot(self):
+        """初始化Telegram Bot"""
+        token = os.getenv("TELEGRAM_BOT_TOKEN")
+        chat_id = os.getenv("TELEGRAM_CHAT_ID")
+
+        if not token or not chat_id:
+            self.logger.info("Telegram Bot not configured (optional)")
+            return None
+
+        try:
+            bot = TelegramInteractiveBot(token, chat_id)
+
+            # 设置回调函数
+            bot.set_callbacks(
+                get_status=self._get_status_for_telegram,
+                get_positions=self._get_positions_for_telegram,
+                get_profit=self._get_profit_for_telegram
+            )
+
+            self.logger.info("Telegram Bot initialized")
+            return bot
+        except Exception as e:
+            self.logger.error(f"Failed to initialize Telegram Bot: {e}")
+            return None
+
     async def connect(self):
-        """连接交易所"""
+        """连接交易所和Telegram Bot"""
         self.logger.info("Connecting to exchanges...")
         await self.grvt.connect()
         self.logger.info("✓ GRVT connected")
 
         await self.lighter.connect()
         self.logger.info("✓ Lighter connected")
+
+        # 启动Telegram Bot
+        if self.telegram_bot:
+            await self.telegram_bot.start()
+            self.logger.info("✓ Telegram Bot started")
 
     async def get_funding_spread(self) -> FundingRateSpread:
         """获取归一化的费率差"""
@@ -299,7 +333,17 @@ class HedgeBotFunding:
             fill_timeout=30
         )
 
-        if not result.success:
+        if result.success:
+            # 通知Telegram
+            if self.telegram_bot:
+                spread = await self.get_funding_spread()
+                await self.telegram_bot.notify_build(
+                    self.symbol,
+                    profitable_side,
+                    self.order_quantity,
+                    abs(spread.annual_spread)
+                )
+        else:
             self.logger.warning(f"   Trade failed: {result.error}, retrying in 5s...")
             await asyncio.sleep(5)
 
@@ -322,7 +366,17 @@ class HedgeBotFunding:
             fill_timeout=30
         )
 
-        if not result.success:
+        if result.success:
+            # 通知Telegram
+            if self.telegram_bot:
+                spread = await self.get_funding_spread()
+                await self.telegram_bot.notify_winddown(
+                    self.symbol,
+                    profitable_side,
+                    self.order_quantity,
+                    abs(spread.annual_spread)
+                )
+        else:
             self.logger.warning(f"   Trade failed: {result.error}, retrying in 5s...")
             await asyncio.sleep(5)
 
@@ -330,10 +384,136 @@ class HedgeBotFunding:
         """清理资源"""
         try:
             self.logger.info("Cleaning up...")
+
+            # 停止Telegram Bot
+            if self.telegram_bot:
+                await self.telegram_bot.stop()
+
             await self.grvt.disconnect()
             await self.lighter.disconnect()
         except:
             pass
+
+    # ========== Telegram Bot回调函数 ==========
+
+    async def _get_status_for_telegram(self) -> str:
+        """为Telegram Bot获取状态信息"""
+        try:
+            # 获取当前费率差
+            spread = await self.get_funding_spread()
+            position = await self.executor.get_positions()
+
+            # 检查当前操作
+            check_result = FundingRateChecker.check_funding_opportunity(
+                spread=spread,
+                position=position,
+                build_threshold_apr=self.funding_build_threshold,
+                close_threshold_apr=self.funding_close_threshold,
+                max_position=self.max_position
+            )
+
+            # 格式化输出
+            status = f"""
+📊 *Current Status*
+
+Symbol: `{self.symbol}`
+
+*Funding Rates:*
+GRVT: `{spread.grvt_normalized.original_rate*100:.4f}%` ({spread.grvt_normalized.interval_hours}h) → `{spread.grvt_normalized.annual_rate*100:.2f}% APR`
+Lighter: `{spread.lighter_normalized.original_rate*100:.4f}%` ({spread.lighter_normalized.interval_hours}h) → `{spread.lighter_normalized.annual_rate*100:.2f}% APR`
+Spread: `{abs(spread.annual_spread)*100:.2f}% APR`
+
+*Position:*
+Total: `{abs(position.total_position)} / {self.max_position}`
+GRVT: `{position.grvt_position}`
+Lighter: `{position.lighter_position}`
+Imbalance: `{position.imbalance}`
+
+*Action:* {check_result.action.value}
+*Strategy:* {check_result.profitable_side.upper()}
+
+*Thresholds:*
+Build: `{self.funding_build_threshold*100:.2f}% APR`
+Close: `{self.funding_close_threshold*100:.2f}% APR`
+"""
+
+            # 如果有仓位，估算收益
+            if abs(position.total_position) > Decimal("0.1"):
+                daily_profit = FundingRateChecker.estimate_daily_profit(
+                    spread=spread,
+                    position_size=abs(position.total_position)
+                )
+                status += f"\n💵 Estimated: `${daily_profit:.2f}/day`"
+
+            return status
+
+        except Exception as e:
+            return f"❌ Error getting status: {e}"
+
+    async def _get_positions_for_telegram(self) -> str:
+        """为Telegram Bot获取仓位信息"""
+        try:
+            position = await self.executor.get_positions()
+
+            positions_text = f"""
+📈 *Positions*
+
+Symbol: `{self.symbol}`
+
+*GRVT:*
+Position: `{position.grvt_position}`
+
+*Lighter:*
+Position: `{position.lighter_position}`
+
+*Summary:*
+Total: `{position.total_position}`
+Imbalance: `{position.imbalance}`
+
+*Limits:*
+Max Position: `{self.max_position}`
+Max Imbalance: `{self.max_imbalance}`
+"""
+            return positions_text
+
+        except Exception as e:
+            return f"❌ Error getting positions: {e}"
+
+    async def _get_profit_for_telegram(self) -> str:
+        """为Telegram Bot获取收益信息"""
+        try:
+            spread = await self.get_funding_spread()
+            position = await self.executor.get_positions()
+
+            if abs(position.total_position) < Decimal("0.1"):
+                return "📊 *Profit Estimate*\n\nNo active position"
+
+            daily_profit = FundingRateChecker.estimate_daily_profit(
+                spread=spread,
+                position_size=abs(position.total_position)
+            )
+
+            # 估算月度和年度收益
+            monthly_profit = daily_profit * 30
+            yearly_profit = daily_profit * 365
+
+            profit_text = f"""
+💰 *Profit Estimate*
+
+Position Size: `${abs(position.total_position):.2f}`
+Spread: `{abs(spread.annual_spread)*100:.2f}% APR`
+
+*Estimated Earnings:*
+Daily: `${daily_profit:.2f}`
+Monthly: `${monthly_profit:.2f}`
+Yearly: `${yearly_profit:.2f}`
+
+⚠️ *Note:* This is an estimate based on current spread. Actual profit may vary due to spread changes and trading fees.
+"""
+            return profit_text
+
+        except Exception as e:
+            return f"❌ Error getting profit: {e}"
 
 
 async def main():
