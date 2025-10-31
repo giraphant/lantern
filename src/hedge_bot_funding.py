@@ -61,6 +61,9 @@ class HedgeBotFunding:
         # 初始化Telegram Bot（如果配置了）
         self.telegram_bot = self._init_telegram_bot()
 
+        # 跟踪当前策略状态（用于检测状态变化）
+        self.current_action = None  # FundingAction.BUILD / HOLD / WINDDOWN
+
     def _setup_logger(self):
         """设置日志"""
         logger = logging.getLogger('HedgeBotFunding')
@@ -283,12 +286,19 @@ class HedgeBotFunding:
 
                 self.logger.info(f"📊 Action: {check_result.action.value} | {check_result.reason}")
 
-                # ========== 步骤6: 执行交易 ==========
+                # ========== 步骤6: 检测状态变化并通知 ==========
+                if check_result.action != self.current_action:
+                    # 状态发生变化，发送通知
+                    if self.telegram_bot:
+                        await self._notify_strategy_change(check_result, spread)
+                    self.current_action = check_result.action
+
+                # ========== 步骤7: 执行交易 ==========
                 if check_result.action == FundingAction.BUILD:
-                    await self._handle_building_phase(check_result.profitable_side)
+                    await self._handle_building_phase(check_result.profitable_side, spread)
 
                 elif check_result.action == FundingAction.WINDDOWN:
-                    await self._handle_winddown_phase(check_result.profitable_side)
+                    await self._handle_winddown_phase(check_result.profitable_side, spread)
 
                 elif check_result.action == FundingAction.HOLD:
                     # 估算收益
@@ -314,7 +324,7 @@ class HedgeBotFunding:
         finally:
             await self.cleanup()
 
-    async def _handle_building_phase(self, profitable_side: str):
+    async def _handle_building_phase(self, profitable_side: str, spread: FundingRateSpread):
         """处理建仓阶段"""
         self.logger.info(f"📈 BUILDING {profitable_side.upper()} position: {self.order_quantity}")
 
@@ -333,21 +343,11 @@ class HedgeBotFunding:
             fill_timeout=30
         )
 
-        if result.success:
-            # 通知Telegram
-            if self.telegram_bot:
-                spread = await self.get_funding_spread()
-                await self.telegram_bot.notify_build(
-                    self.symbol,
-                    profitable_side,
-                    self.order_quantity,
-                    abs(spread.annual_spread)
-                )
-        else:
+        if not result.success:
             self.logger.warning(f"   Trade failed: {result.error}, retrying in 5s...")
             await asyncio.sleep(5)
 
-    async def _handle_winddown_phase(self, profitable_side: str):
+    async def _handle_winddown_phase(self, profitable_side: str, spread: FundingRateSpread):
         """处理平仓阶段"""
         self.logger.info(f"📉 WINDING DOWN {profitable_side.upper()} position: {self.order_quantity}")
 
@@ -366,17 +366,7 @@ class HedgeBotFunding:
             fill_timeout=30
         )
 
-        if result.success:
-            # 通知Telegram
-            if self.telegram_bot:
-                spread = await self.get_funding_spread()
-                await self.telegram_bot.notify_winddown(
-                    self.symbol,
-                    profitable_side,
-                    self.order_quantity,
-                    abs(spread.annual_spread)
-                )
-        else:
+        if not result.success:
             self.logger.warning(f"   Trade failed: {result.error}, retrying in 5s...")
             await asyncio.sleep(5)
 
@@ -393,6 +383,81 @@ class HedgeBotFunding:
             await self.lighter.disconnect()
         except:
             pass
+
+    # ========== Telegram Bot通知函数 ==========
+
+    async def _notify_strategy_change(self, check_result, spread: FundingRateSpread):
+        """通知策略状态变化（仅在状态切换时调用）"""
+        position = await self.executor.get_positions()
+
+        if check_result.action == FundingAction.BUILD:
+            text = f"""
+📈 *Strategy Change: START BUILDING*
+
+Symbol: `{self.symbol}`
+Spread: `{abs(spread.annual_spread)*100:.2f}% APR`
+Strategy: {check_result.profitable_side.upper()}
+
+Current Position: `{abs(position.total_position)} / {self.max_position}`
+
+Bot will now accumulate position gradually.
+"""
+        elif check_result.action == FundingAction.WINDDOWN:
+            # 计算已持仓时的收益
+            if abs(position.total_position) > Decimal("0.1"):
+                daily_profit = FundingRateChecker.estimate_daily_profit(
+                    spread=spread,
+                    position_size=abs(position.total_position)
+                )
+                profit_text = f"\nCurrent earnings: `${daily_profit:.2f}/day`"
+            else:
+                profit_text = ""
+
+            text = f"""
+📉 *Strategy Change: START WINDING DOWN*
+
+Symbol: `{self.symbol}`
+Spread: `{abs(spread.annual_spread)*100:.2f}% APR`
+Reason: {check_result.reason}
+
+Current Position: `{abs(position.total_position)}`{profit_text}
+
+Bot will now gradually close positions.
+"""
+        elif check_result.action == FundingAction.HOLD:
+            # 从非HOLD状态进入HOLD
+            if abs(position.total_position) > Decimal("0.1"):
+                daily_profit = FundingRateChecker.estimate_daily_profit(
+                    spread=spread,
+                    position_size=abs(position.total_position)
+                )
+                text = f"""
+⏸️ *Strategy Change: HOLDING*
+
+Symbol: `{self.symbol}`
+Spread: `{abs(spread.annual_spread)*100:.2f}% APR`
+
+Position: `{abs(position.total_position)} / {self.max_position}`
+Strategy: {check_result.profitable_side.upper()}
+
+💰 Earning: `${daily_profit:.2f}/day`
+
+Bot is now holding and accumulating funding rate profit.
+"""
+            else:
+                # 无仓位HOLD（初始状态或平仓完成）
+                text = f"""
+⏸️ *Strategy Change: IDLE*
+
+Symbol: `{self.symbol}`
+Spread: `{abs(spread.annual_spread)*100:.2f}% APR`
+
+No position. Waiting for arbitrage opportunity (spread ≥ {self.funding_build_threshold*100:.0f}% APR).
+"""
+        else:
+            return
+
+        await self.telegram_bot.send_message(text)
 
     # ========== Telegram Bot回调函数 ==========
 
