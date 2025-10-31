@@ -79,7 +79,7 @@ class FundingRateChecker:
                 profitable_side=spread.profitable_side
             )
 
-        # ========== 判断2: 费率差太小 OR 仓位达上限 → WINDDOWN ==========
+        # ========== 判断2: 费率差太小 → WINDDOWN ==========
         # 只有在有仓位的情况下才考虑平仓
         if current_position >= min_position_for_close:
             if annual_spread < close_threshold_apr:
@@ -90,15 +90,11 @@ class FundingRateChecker:
                     profitable_side=spread.profitable_side
                 )
 
-            if current_position >= max_position:
-                return FundingCheckResult(
-                    action=FundingAction.WINDDOWN,
-                    reason=f"Position {current_position} reached limit {max_position}",
-                    annual_spread=annual_spread,
-                    profitable_side=spread.profitable_side
-                )
-
         # ========== 判断3: 其他 → HOLD ==========
+        # 包括：
+        # - 有仓位 + 费率还不错（close_threshold <= spread < build_threshold）→ HOLD持仓赚费率
+        # - 有仓位 + 已满仓 + 费率还不错 → HOLD持仓赚费率
+        # - 无仓位 + 费率不够（spread < build_threshold）→ HOLD等待机会
         if current_position < min_position_for_close:
             reason = f"No position to hold (spread={annual_spread:.2%} APR)"
         else:
