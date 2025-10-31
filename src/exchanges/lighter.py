@@ -647,11 +647,11 @@ class LighterClient(BaseExchangeClient):
         """
         Get the funding interval in hours for a contract.
 
-        Lighter uses 1-hour funding intervals.
+        Lighter settles every 1 hour, but the API returns 8-hour rates.
 
         Returns:
-            int: Funding interval in hours (always 1 for Lighter)
+            int: Funding interval in hours (always 8 for Lighter API)
         """
-        # Lighter uses 1-hour funding intervals (hourly settlement)
-        # The public API at /api/v1/funding-rates returns 1-hour rates
-        return 1
+        # Lighter settles funding every 1 hour, but the public API returns 8-hour rates
+        # So we use 8 for APR calculation to match what the API returns
+        return 8
