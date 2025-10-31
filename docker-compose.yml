@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: config/Dockerfile
-    container_name: lantern-hedge-bot-v3
+    container_name: lantern-funding-bot
     restart: unless-stopped
 
     # Environment variables - can be set in .env file or here
@@ -21,12 +21,15 @@ services:
       - LIGHTER_ACCOUNT_INDEX=${LIGHTER_ACCOUNT_INDEX:-0}
       - LIGHTER_API_KEY_INDEX=${LIGHTER_API_KEY_INDEX:-0}
 
-      # Trading Parameters (Optional - have defaults)
-      - TRADING_SYMBOL=${TRADING_SYMBOL:-BNB}
+      # Trading Parameters (Required)
+      - TRADING_SYMBOL=${TRADING_SYMBOL:-BTC}
       - TRADING_SIZE=${TRADING_SIZE:-0.1}
-      - CYCLE_TARGET=${CYCLE_TARGET:-5}
-      - CYCLE_HOLD_TIME=${CYCLE_HOLD_TIME:-180}
-      - TRADING_DIRECTION=${TRADING_DIRECTION:-long}
+      - MAX_POSITION=${MAX_POSITION:-10}
+
+      # Funding Rate Strategy Parameters (Required)
+      - FUNDING_BUILD_THRESHOLD_APR=${FUNDING_BUILD_THRESHOLD_APR:-0.05}
+      - FUNDING_CLOSE_THRESHOLD_APR=${FUNDING_CLOSE_THRESHOLD_APR:-0.02}
+      - FUNDING_CHECK_INTERVAL=${FUNDING_CHECK_INTERVAL:-300}
 
       # Pushover Notifications (Optional)
       - PUSHOVER_USER_KEY=${PUSHOVER_USER_KEY:-}
@@ -34,7 +37,7 @@ services:
 
     # Health check - verify the bot process is running
     healthcheck:
-      test: ["CMD-SHELL", "pgrep -f 'python.*hedge_bot_v3' || exit 1"]
+      test: ["CMD-SHELL", "pgrep -f 'python.*hedge_bot_funding' || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3

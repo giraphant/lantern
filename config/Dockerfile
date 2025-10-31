@@ -19,11 +19,10 @@ RUN pip install --no-cache-dir -r requirements.txt && \
 
 # Copy application code and structure
 COPY src ./src
-COPY run_hedge.py .
 
 # Create logs directory
 RUN mkdir -p logs
 
-# Default command - parameters are read from environment variables
-# Set these in Coolify's environment variables section
-CMD ["python3", "run_hedge.py"]
+# Default command - run funding rate arbitrage bot
+# Parameters are read from environment variables
+CMD ["python3", "src/hedge_bot_funding.py"]
