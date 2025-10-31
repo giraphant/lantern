@@ -24,6 +24,7 @@ logging.getLogger('pysdk').setLevel(logging.ERROR)
 from exchanges.grvt import GrvtClient
 from exchanges.lighter import LighterClient
 from exchanges.binance import BinanceClient
+from exchanges.backpack import BackpackClient
 from hedge.safety_checker import SafetyChecker, SafetyAction
 from hedge.rebalancer import Rebalancer, TradeAction
 from hedge.trading_executor import TradingExecutor
@@ -122,6 +123,8 @@ class HedgeBotFunding:
             return self._init_lighter_client()
         elif exchange_type == "BINANCE":
             return self._init_binance_client()
+        elif exchange_type == "BACKPACK":
+            return self._init_backpack_client()
         else:
             raise ValueError(f"Unsupported exchange type: {exchange_type}")
 
@@ -175,6 +178,20 @@ class HedgeBotFunding:
             quantity=self.order_quantity
         )
         return BinanceClient(config)
+
+    def _init_backpack_client(self):
+        """初始化Backpack客户端"""
+        backpack_public_key = os.getenv("BACKPACK_PUBLIC_KEY")
+        backpack_secret_key = os.getenv("BACKPACK_SECRET_KEY")
+
+        if not backpack_public_key or not backpack_secret_key:
+            raise ValueError("BACKPACK_PUBLIC_KEY and BACKPACK_SECRET_KEY are required")
+
+        config = Config(
+            ticker=self.symbol,
+            quantity=self.order_quantity
+        )
+        return BackpackClient(config)
 
     def _init_telegram_bot(self):
         """初始化Telegram Bot"""

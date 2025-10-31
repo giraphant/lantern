@@ -593,3 +593,51 @@ class BackpackClient(BaseExchangeClient):
             raise ValueError("Failed to get tick size for ticker")
 
         return self.config.contract_id, self.config.tick_size
+
+    @query_retry(reraise=True)
+    async def get_funding_rate(self, contract_id: str) -> Decimal:
+        """
+        Get the current funding rate for a contract.
+
+        Backpack uses 1-hour funding intervals.
+
+        Returns:
+            Decimal: Funding rate as a decimal (e.g., 0.0000125 = 0.00125%)
+        """
+        try:
+            import aiohttp
+
+            # Use public API to get funding rate
+            url = "https://api.backpack.exchange/api/v1/fundingRates"
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    url,
+                    params={"symbol": contract_id, "limit": 1}
+                ) as resp:
+                    data = await resp.json()
+
+                    if data and len(data) > 0:
+                        funding_rate_str = data[0].get("fundingRate")
+                        if funding_rate_str is not None:
+                            # Backpack returns 1-hour rate as decimal
+                            return Decimal(str(funding_rate_str))
+
+                    self.logger.log(f"No funding rate data for {contract_id}", "WARNING")
+                    return Decimal("0")
+
+        except Exception as e:
+            self.logger.log(f"Error fetching funding rate for {contract_id}: {e}", "ERROR")
+            return Decimal("0")
+
+    @query_retry(reraise=True)
+    async def get_funding_interval_hours(self, contract_id: str) -> int:
+        """
+        Get the funding interval in hours for a contract.
+
+        Backpack uses 1-hour funding intervals.
+
+        Returns:
+            int: Funding interval in hours (always 1 for Backpack)
+        """
+        return 1
