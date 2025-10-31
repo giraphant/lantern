@@ -707,15 +707,28 @@ class GrvtClient(BaseExchangeClient):
         Returns:
             Decimal: Funding rate as a decimal (e.g., 0.0001 = 0.01%)
         """
-        # Use GRVT SDK to fetch funding rate
-        # Note: This method needs to be verified with actual GRVT API
         try:
-            ticker_data = self.rest_client.fetch_ticker(symbol=contract_id)
-            if ticker_data and 'fundingRate' in ticker_data:
-                return Decimal(str(ticker_data['fundingRate']))
-            else:
-                self.logger.log(f"No funding rate data for {contract_id}", "WARNING")
-                return Decimal("0")
+            import aiohttp
+            url = "https://market-data.grvt.io/full/v1/funding"
+
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    url,
+                    json={"instrument": contract_id, "limit": 1}
+                ) as resp:
+                    data = await resp.json()
+
+                    funding_points = data.get("result", [])
+                    if funding_points:
+                        # GRVT returns funding_rate as percentage (e.g., 0.1422 = 0.1422%)
+                        # Convert to decimal form (0.1422 -> 0.001422)
+                        rate = funding_points[0].get("funding_rate")
+                        if rate is not None:
+                            return Decimal(str(rate)) / Decimal("100")
+
+                    self.logger.log(f"No funding rate data for {contract_id}", "WARNING")
+                    return Decimal("0")
+
         except Exception as e:
             self.logger.log(f"Error fetching funding rate: {e}", "ERROR")
             return Decimal("0")
@@ -726,31 +739,39 @@ class GrvtClient(BaseExchangeClient):
         Get the funding interval in hours for a contract.
 
         GRVT typically uses 8-hour funding intervals, but this may vary by contract.
-        We fetch from the market data to be accurate.
 
         Returns:
             int: Funding interval in hours
         """
         try:
-            # Fetch market info to get funding interval
-            markets = self.rest_client.fetch_markets()
+            import aiohttp
+            url = "https://market-data.grvt.io/full/v1/instruments"
 
-            for market in markets:
-                if market.get('id') == contract_id or market.get('symbol') == contract_id:
-                    # Try to get funding interval from market data
-                    # GRVT API may store this as 'fundingInterval' in seconds
-                    if 'fundingInterval' in market:
-                        interval_seconds = int(market['fundingInterval'])
-                        interval_hours = interval_seconds // 3600
-                        return interval_hours
-                    else:
-                        # Default to 8 hours if not specified
-                        self.logger.log(f"No funding interval found for {contract_id}, defaulting to 8h", "WARNING")
-                        return 8
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    url,
+                    json={
+                        "kind": ["PERPETUAL"],
+                        "quote": ["USDT"],
+                        "is_active": True
+                    }
+                ) as resp:
+                    instruments_data = await resp.json()
 
-            # If contract not found, default to 8 hours
-            self.logger.log(f"Contract {contract_id} not found in markets, defaulting to 8h", "WARNING")
-            return 8
+                    instruments = instruments_data.get("result", [])
+
+                    for inst in instruments:
+                        if inst.get("instrument") == contract_id:
+                            # Check if funding_interval is in the instrument data
+                            if "funding_interval_seconds" in inst:
+                                interval_seconds = int(inst["funding_interval_seconds"])
+                                return interval_seconds // 3600
+
+                            # Default to 8 hours for GRVT
+                            return 8
+
+                    # If contract not found, default to 8 hours
+                    return 8
 
         except Exception as e:
             self.logger.log(f"Error fetching funding interval: {e}, defaulting to 8h", "ERROR")

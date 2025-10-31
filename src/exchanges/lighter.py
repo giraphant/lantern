@@ -610,16 +610,33 @@ class LighterClient(BaseExchangeClient):
             Decimal: Funding rate as a decimal (e.g., 0.0001 = 0.01%)
         """
         try:
-            # Use Lighter Market API to get funding rate
-            market_api = lighter.MarketApi(self.api_client)
-            market_info = await market_api.market(market_id=contract_id)
+            import aiohttp
 
-            if market_info and hasattr(market_info, 'funding_rate'):
-                # Lighter returns funding rate as a string, convert to Decimal
-                return Decimal(str(market_info.funding_rate))
-            else:
-                self.logger.log(f"No funding rate data for {contract_id}", "WARNING")
-                return Decimal("0")
+            # Use public API to get funding rates
+            url = "https://mainnet.zklighter.elliot.ai/api/v1/funding-rates"
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url) as resp:
+                    data = await resp.json()
+
+                    funding_rates = data.get("funding_rates", [])
+                    lighter_rates = [r for r in funding_rates if r.get("exchange") == "lighter"]
+
+                    # Find matching symbol
+                    # contract_id is like "BTC", "ETH", etc.
+                    symbol = contract_id.upper()
+
+                    for entry in lighter_rates:
+                        entry_symbol = entry.get("symbol", "").upper()
+                        if entry_symbol == symbol:
+                            rate = entry.get("rate")
+                            if rate is not None:
+                                # Lighter returns 8-hour rate as decimal
+                                return Decimal(str(rate))
+
+                    self.logger.log(f"No funding rate data for {contract_id}", "WARNING")
+                    return Decimal("0")
+
         except Exception as e:
             self.logger.log(f"Error fetching funding rate: {e}", "ERROR")
             return Decimal("0")
@@ -629,27 +646,11 @@ class LighterClient(BaseExchangeClient):
         """
         Get the funding interval in hours for a contract.
 
-        Lighter typically uses 1-hour funding intervals for most contracts,
-        but this may vary. We fetch from the market data to be accurate.
+        Lighter uses 8-hour funding intervals.
 
         Returns:
-            int: Funding interval in hours
+            int: Funding interval in hours (always 8 for Lighter)
         """
-        try:
-            # Use Lighter Market API to get funding interval
-            market_api = lighter.MarketApi(self.api_client)
-            market_info = await market_api.market(market_id=contract_id)
-
-            if market_info and hasattr(market_info, 'funding_interval_seconds'):
-                # Convert seconds to hours
-                interval_seconds = int(market_info.funding_interval_seconds)
-                interval_hours = interval_seconds // 3600
-                return max(interval_hours, 1)  # At least 1 hour
-            else:
-                # Default to 1 hour if not specified
-                self.logger.log(f"No funding interval found for {contract_id}, defaulting to 1h", "WARNING")
-                return 1
-
-        except Exception as e:
-            self.logger.log(f"Error fetching funding interval: {e}, defaulting to 1h", "ERROR")
-            return 1
+        # Based on public API data, Lighter uses 8-hour funding intervals
+        # The public API at /api/v1/funding-rates returns 8-hour rates
+        return 8
