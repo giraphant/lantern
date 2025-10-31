@@ -12,10 +12,11 @@ import logging
 # Add src to path to import exchange clients
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "src"))
 
-from exchanges.grvt import GrvtClient
+# Import exchange clients (GRVT temporarily disabled due to pysdk dependency issue)
+# from exchanges.grvt import GrvtClient
 from exchanges.lighter import LighterClient
 from exchanges.binance import BinanceClient
-from exchanges.backpack import BackpackClient
+# from exchanges.backpack import BackpackClient  # Requires bpx module
 
 logger = logging.getLogger(__name__)
 
@@ -55,16 +56,15 @@ class StrategyExecutor:
             quantity=size
         )
 
-        if exchange_type == "GRVT":
-            return GrvtClient(cfg)
-        elif exchange_type == "LIGHTER":
+        # Currently only Lighter and Binance are supported in Docker
+        # GRVT requires pysdk dependency issue to be resolved
+        # Backpack requires bpx module
+        if exchange_type == "LIGHTER":
             return LighterClient(cfg)
         elif exchange_type == "BINANCE":
             return BinanceClient(cfg)
-        elif exchange_type == "BACKPACK":
-            return BackpackClient(cfg)
         else:
-            raise ValueError(f"Unsupported exchange: {exchange_type}")
+            raise ValueError(f"Unsupported exchange: {exchange_type}. Currently only Lighter and Binance are supported.")
 
     async def start(self):
         """Start strategy execution."""
