@@ -10,16 +10,28 @@ services:
 
     # Environment variables - can be set in .env file or here
     environment:
-      # GRVT Configuration (Required)
+      # Exchange Selection (Optional - defaults to GRVT vs Lighter)
+      - EXCHANGE_A=${EXCHANGE_A:-GRVT}
+      - EXCHANGE_B=${EXCHANGE_B:-Lighter}
+
+      # GRVT Configuration (Required if using GRVT)
       - GRVT_API_KEY=${GRVT_API_KEY}
       - GRVT_PRIVATE_KEY=${GRVT_PRIVATE_KEY}
       - GRVT_TRADING_ACCOUNT_ID=${GRVT_TRADING_ACCOUNT_ID}
       - GRVT_ENVIRONMENT=${GRVT_ENVIRONMENT:-prod}
 
-      # Lighter Configuration (Required)
+      # Lighter Configuration (Required if using Lighter)
       - LIGHTER_PRIVATE_KEY=${LIGHTER_PRIVATE_KEY}
       - LIGHTER_ACCOUNT_INDEX=${LIGHTER_ACCOUNT_INDEX:-0}
       - LIGHTER_API_KEY_INDEX=${LIGHTER_API_KEY_INDEX:-0}
+
+      # Binance Configuration (Required if using Binance)
+      - BINANCE_API_KEY=${BINANCE_API_KEY:-}
+      - BINANCE_SECRET_KEY=${BINANCE_SECRET_KEY:-}
+
+      # Backpack Configuration (Required if using Backpack)
+      - BACKPACK_PUBLIC_KEY=${BACKPACK_PUBLIC_KEY:-}
+      - BACKPACK_SECRET_KEY=${BACKPACK_SECRET_KEY:-}
 
       # Trading Parameters (Required)
       - TRADING_SYMBOL=${TRADING_SYMBOL:-BTC}
