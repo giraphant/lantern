@@ -15,16 +15,18 @@ from telegram.constants import ParseMode
 class TelegramInteractiveBot:
     """Interactive Telegram Bot with command handlers"""
 
-    def __init__(self, token: str, chat_id: str):
+    def __init__(self, token: str, chat_id: str, enable_commands: bool = True):
         """
         Initialize Telegram Bot.
 
         Args:
             token: Bot token from @BotFather
             chat_id: Your Telegram chat ID
+            enable_commands: Enable interactive commands (polling). Set to False if running multiple instances.
         """
         self.token = token
         self.chat_id = chat_id
+        self.enable_commands = enable_commands
         self.logger = logging.getLogger('TelegramBot')
 
         # 状态回调函数（由主bot设置）
@@ -54,32 +56,43 @@ class TelegramInteractiveBot:
         try:
             self.app = Application.builder().token(self.token).build()
 
-            # 注册命令处理器
-            self.app.add_handler(CommandHandler("start", self.cmd_start))
-            self.app.add_handler(CommandHandler("help", self.cmd_help))
-            self.app.add_handler(CommandHandler("status", self.cmd_status))
-            self.app.add_handler(CommandHandler("positions", self.cmd_positions))
-            self.app.add_handler(CommandHandler("profit", self.cmd_profit))
+            if self.enable_commands:
+                # 注册命令处理器
+                self.app.add_handler(CommandHandler("start", self.cmd_start))
+                self.app.add_handler(CommandHandler("help", self.cmd_help))
+                self.app.add_handler(CommandHandler("status", self.cmd_status))
+                self.app.add_handler(CommandHandler("positions", self.cmd_positions))
+                self.app.add_handler(CommandHandler("profit", self.cmd_profit))
 
-            # 设置命令菜单
-            await self.app.bot.set_my_commands([
-                BotCommand("start", "开始使用"),
-                BotCommand("help", "帮助信息"),
-                BotCommand("status", "查看当前状态"),
-                BotCommand("positions", "查看仓位详情"),
-                BotCommand("profit", "查看收益统计"),
-            ])
+                # 设置命令菜单
+                await self.app.bot.set_my_commands([
+                    BotCommand("start", "开始使用"),
+                    BotCommand("help", "帮助信息"),
+                    BotCommand("status", "查看当前状态"),
+                    BotCommand("positions", "查看仓位详情"),
+                    BotCommand("profit", "查看收益统计"),
+                ])
 
-            # 启动bot（非阻塞）
-            await self.app.initialize()
-            await self.app.start()
-            await self.app.updater.start_polling()
+                # 启动bot（非阻塞）
+                await self.app.initialize()
+                await self.app.start()
+                await self.app.updater.start_polling()
 
-            self._running = True
-            self.logger.info("✅ Telegram Bot started")
+                self._running = True
+                self.logger.info("✅ Telegram Bot started with commands enabled")
 
-            # 发送启动消息
-            await self.send_message("🤖 *Funding Rate Arbitrage Bot Started*\n\n使用 /help 查看可用命令")
+                # 发送启动消息
+                await self.send_message("🤖 *Funding Rate Arbitrage Bot Started*\n\n使用 /help 查看可用命令")
+            else:
+                # 只初始化app用于发送消息，不启动polling
+                await self.app.initialize()
+                await self.app.start()
+
+                self._running = True
+                self.logger.info("✅ Telegram Bot started (notification-only mode)")
+
+                # 发送启动消息
+                await self.send_message("🤖 *Funding Rate Arbitrage Bot Started*\n\n(Notification-only mode - commands disabled)")
 
         except Exception as e:
             self.logger.error(f"Failed to start Telegram Bot: {e}")
@@ -88,7 +101,8 @@ class TelegramInteractiveBot:
     async def stop(self):
         """停止Telegram Bot"""
         if self.app and self._running:
-            await self.app.updater.stop()
+            if self.enable_commands:
+                await self.app.updater.stop()
             await self.app.stop()
             await self.app.shutdown()
             self._running = False

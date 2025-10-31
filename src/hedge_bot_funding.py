@@ -197,13 +197,15 @@ class HedgeBotFunding:
         """初始化Telegram Bot"""
         token = os.getenv("TELEGRAM_BOT_TOKEN")
         chat_id = os.getenv("TELEGRAM_CHAT_ID")
+        # 是否启用交互命令（polling）。如果运行多个实例使用同一个token，需要禁用
+        enable_commands = os.getenv("TELEGRAM_ENABLE_COMMANDS", "true").lower() in ("true", "1", "yes")
 
         if not token or not chat_id:
             self.logger.info("Telegram Bot not configured (optional)")
             return None
 
         try:
-            bot = TelegramInteractiveBot(token, chat_id)
+            bot = TelegramInteractiveBot(token, chat_id, enable_commands=enable_commands)
 
             # 设置回调函数
             bot.set_callbacks(
@@ -212,7 +214,8 @@ class HedgeBotFunding:
                 get_profit=self._get_profit_for_telegram
             )
 
-            self.logger.info("Telegram Bot initialized")
+            mode = "with commands" if enable_commands else "notification-only"
+            self.logger.info(f"Telegram Bot initialized ({mode})")
             return bot
         except Exception as e:
             self.logger.error(f"Failed to initialize Telegram Bot: {e}")

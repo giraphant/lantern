@@ -50,6 +50,7 @@ services:
       # Telegram Bot (Optional)
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      - TELEGRAM_ENABLE_COMMANDS=${TELEGRAM_ENABLE_COMMANDS:-true}
 
     # Health check - verify the bot process is running
     healthcheck:
