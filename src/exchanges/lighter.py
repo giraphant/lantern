@@ -622,9 +622,10 @@ class LighterClient(BaseExchangeClient):
                     funding_rates = data.get("funding_rates", [])
                     lighter_rates = [r for r in funding_rates if r.get("exchange") == "lighter"]
 
-                    # Find matching symbol
-                    # contract_id is like "BTC", "ETH", etc.
-                    symbol = contract_id.upper()
+                    # Extract ticker from contract_id
+                    # contract_id might be numeric (market_id) or contain ticker
+                    # Try to use self.config.ticker if available
+                    symbol = self.config.ticker.upper() if hasattr(self.config, 'ticker') else contract_id.upper()
 
                     for entry in lighter_rates:
                         entry_symbol = entry.get("symbol", "").upper()
@@ -634,7 +635,7 @@ class LighterClient(BaseExchangeClient):
                                 # Lighter returns 8-hour rate as decimal
                                 return Decimal(str(rate))
 
-                    self.logger.log(f"No funding rate data for {contract_id}", "WARNING")
+                    self.logger.log(f"No funding rate data for symbol {symbol} (contract_id: {contract_id})", "WARNING")
                     return Decimal("0")
 
         except Exception as e:

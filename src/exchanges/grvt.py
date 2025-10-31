@@ -726,11 +726,13 @@ class GrvtClient(BaseExchangeClient):
                         if rate is not None:
                             return Decimal(str(rate)) / Decimal("100")
 
-                    self.logger.log(f"No funding rate data for {contract_id}", "WARNING")
+                    # If no data returned, log the contract_id and ticker for debugging
+                    ticker = self.config.ticker if hasattr(self.config, 'ticker') else 'unknown'
+                    self.logger.log(f"No funding rate data for contract_id: {contract_id}, ticker: {ticker}", "WARNING")
                     return Decimal("0")
 
         except Exception as e:
-            self.logger.log(f"Error fetching funding rate: {e}", "ERROR")
+            self.logger.log(f"Error fetching funding rate for {contract_id}: {e}", "ERROR")
             return Decimal("0")
 
     @query_retry(reraise=True)
