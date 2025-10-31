@@ -600,3 +600,56 @@ class LighterClient(BaseExchangeClient):
             raise ValueError("Failed to get tick size")
 
         return self.config.contract_id, self.config.tick_size
+
+    @query_retry(reraise=True)
+    async def get_funding_rate(self, contract_id: str) -> Decimal:
+        """
+        Get the current funding rate for a contract.
+
+        Returns:
+            Decimal: Funding rate as a decimal (e.g., 0.0001 = 0.01%)
+        """
+        try:
+            # Use Lighter Market API to get funding rate
+            market_api = lighter.MarketApi(self.api_client)
+            market_info = await market_api.market(market_id=contract_id)
+
+            if market_info and hasattr(market_info, 'funding_rate'):
+                # Lighter returns funding rate as a string, convert to Decimal
+                return Decimal(str(market_info.funding_rate))
+            else:
+                self.logger.log(f"No funding rate data for {contract_id}", "WARNING")
+                return Decimal("0")
+        except Exception as e:
+            self.logger.log(f"Error fetching funding rate: {e}", "ERROR")
+            return Decimal("0")
+
+    @query_retry(reraise=True)
+    async def get_funding_interval_hours(self, contract_id: str) -> int:
+        """
+        Get the funding interval in hours for a contract.
+
+        Lighter typically uses 1-hour funding intervals for most contracts,
+        but this may vary. We fetch from the market data to be accurate.
+
+        Returns:
+            int: Funding interval in hours
+        """
+        try:
+            # Use Lighter Market API to get funding interval
+            market_api = lighter.MarketApi(self.api_client)
+            market_info = await market_api.market(market_id=contract_id)
+
+            if market_info and hasattr(market_info, 'funding_interval_seconds'):
+                # Convert seconds to hours
+                interval_seconds = int(market_info.funding_interval_seconds)
+                interval_hours = interval_seconds // 3600
+                return max(interval_hours, 1)  # At least 1 hour
+            else:
+                # Default to 1 hour if not specified
+                self.logger.log(f"No funding interval found for {contract_id}, defaulting to 1h", "WARNING")
+                return 1
+
+        except Exception as e:
+            self.logger.log(f"Error fetching funding interval: {e}, defaulting to 1h", "ERROR")
+            return 1

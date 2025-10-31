@@ -698,3 +698,60 @@ class GrvtClient(BaseExchangeClient):
                 return self.config.contract_id, self.config.tick_size
 
         raise ValueError(f"Contract not found for ticker: {ticker}")
+
+    @query_retry(reraise=True)
+    async def get_funding_rate(self, contract_id: str) -> Decimal:
+        """
+        Get the current funding rate for a contract.
+
+        Returns:
+            Decimal: Funding rate as a decimal (e.g., 0.0001 = 0.01%)
+        """
+        # Use GRVT SDK to fetch funding rate
+        # Note: This method needs to be verified with actual GRVT API
+        try:
+            ticker_data = self.rest_client.fetch_ticker(symbol=contract_id)
+            if ticker_data and 'fundingRate' in ticker_data:
+                return Decimal(str(ticker_data['fundingRate']))
+            else:
+                self.logger.log(f"No funding rate data for {contract_id}", "WARNING")
+                return Decimal("0")
+        except Exception as e:
+            self.logger.log(f"Error fetching funding rate: {e}", "ERROR")
+            return Decimal("0")
+
+    @query_retry(reraise=True)
+    async def get_funding_interval_hours(self, contract_id: str) -> int:
+        """
+        Get the funding interval in hours for a contract.
+
+        GRVT typically uses 8-hour funding intervals, but this may vary by contract.
+        We fetch from the market data to be accurate.
+
+        Returns:
+            int: Funding interval in hours
+        """
+        try:
+            # Fetch market info to get funding interval
+            markets = self.rest_client.fetch_markets()
+
+            for market in markets:
+                if market.get('id') == contract_id or market.get('symbol') == contract_id:
+                    # Try to get funding interval from market data
+                    # GRVT API may store this as 'fundingInterval' in seconds
+                    if 'fundingInterval' in market:
+                        interval_seconds = int(market['fundingInterval'])
+                        interval_hours = interval_seconds // 3600
+                        return interval_hours
+                    else:
+                        # Default to 8 hours if not specified
+                        self.logger.log(f"No funding interval found for {contract_id}, defaulting to 8h", "WARNING")
+                        return 8
+
+            # If contract not found, default to 8 hours
+            self.logger.log(f"Contract {contract_id} not found in markets, defaulting to 8h", "WARNING")
+            return 8
+
+        except Exception as e:
+            self.logger.log(f"Error fetching funding interval: {e}, defaulting to 8h", "ERROR")
+            return 8

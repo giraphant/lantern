@@ -130,3 +130,28 @@ class BaseExchangeClient(ABC):
     def get_exchange_name(self) -> str:
         """Get the exchange name."""
         pass
+
+    @abstractmethod
+    async def get_funding_rate(self, contract_id: str) -> Decimal:
+        """
+        Get the current funding rate for a contract.
+
+        Returns:
+            Decimal: Funding rate as a decimal (e.g., 0.0001 = 0.01%)
+        """
+        pass
+
+    @abstractmethod
+    async def get_funding_interval_hours(self, contract_id: str) -> int:
+        """
+        Get the funding interval in hours for a contract.
+
+        Different exchanges and contracts may have different intervals:
+        - 8 hours (3 times per day) - common for Binance, OKX, Bybit
+        - 1 hour (24 times per day) - common for dYdX
+        - Others - varies by exchange and contract
+
+        Returns:
+            int: Funding interval in hours
+        """
+        pass
