@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: funding-bot-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./src:/app/src:ro
+    environment:
+      # Database
+      - DATABASE_URL=sqlite+aiosqlite:///data/funding_bot.db
+
+      # Exchange Configuration (from .env)
+      - GRVT_API_KEY=${GRVT_API_KEY}
+      - GRVT_PRIVATE_KEY=${GRVT_PRIVATE_KEY}
+      - GRVT_TRADING_ACCOUNT_ID=${GRVT_TRADING_ACCOUNT_ID}
+      - GRVT_ENVIRONMENT=${GRVT_ENVIRONMENT:-prod}
+
+      - LIGHTER_PRIVATE_KEY=${LIGHTER_PRIVATE_KEY}
+      - LIGHTER_ACCOUNT_INDEX=${LIGHTER_ACCOUNT_INDEX:-0}
+      - LIGHTER_API_KEY_INDEX=${LIGHTER_API_KEY_INDEX:-0}
+
+      - BINANCE_API_KEY=${BINANCE_API_KEY:-}
+      - BINANCE_SECRET_KEY=${BINANCE_SECRET_KEY:-}
+
+      - BACKPACK_PUBLIC_KEY=${BACKPACK_PUBLIC_KEY:-}
+      - BACKPACK_SECRET_KEY=${BACKPACK_SECRET_KEY:-}
+
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: funding-bot-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    environment:
+      - NEXT_PUBLIC_API_URL=http://backend:8000
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Optional: Cloudflare Tunnel for public access
+  # cloudflared:
+  #   image: cloudflare/cloudflared:latest
+  #   container_name: funding-bot-tunnel
+  #   restart: unless-stopped
+  #   command: tunnel --no-autoupdate run
+  #   environment:
+  #     - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+  #   depends_on:
+  #     - frontend
+  #   logging:
+  #     driver: "json-file"
+  #     options:
+  #       max-size: "10m"
+  #       max-file: "3"
+
+volumes:
+  data:
+    driver: local
