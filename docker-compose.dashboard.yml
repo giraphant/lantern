@@ -8,7 +8,7 @@ services:
     container_name: funding-bot-backend
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "38888:8000"
     volumes:
       - ./data:/app/data
       - ./src:/app/src:ro
@@ -53,11 +53,11 @@ services:
     container_name: funding-bot-frontend
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "38889:3000"
     depends_on:
       - backend
     environment:
-      - NEXT_PUBLIC_API_URL=http://backend:8000
+      - NEXT_PUBLIC_API_URL=http://localhost:38888
     logging:
       driver: "json-file"
       options:

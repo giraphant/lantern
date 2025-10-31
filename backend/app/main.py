@@ -15,9 +15,35 @@ async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     # Startup
     await init_db()
+
+    # Initialize data recorder
+    from app.database import async_session_maker
+    from app.services.data_recorder import DataRecorder
+    from app.services.strategy_manager import strategy_manager
+
+    data_recorder = DataRecorder(async_session_maker)
+
+    # Set up callbacks for all strategies
+    def setup_strategy_callbacks(executor):
+        executor.on_funding_rate_update = data_recorder.record_funding_rate
+        executor.on_position_update = data_recorder.record_position
+
+    # Hook into strategy creation
+    original_start = strategy_manager.start_strategy
+
+    async def start_with_callbacks(strategy_id, config):
+        await original_start(strategy_id, config)
+        executor = strategy_manager.strategies.get(strategy_id)
+        if executor:
+            setup_strategy_callbacks(executor)
+
+    strategy_manager.start_strategy = start_with_callbacks
+
     yield
-    # Shutdown
-    pass
+
+    # Shutdown - stop all strategies
+    for strategy_id in list(strategy_manager.strategies.keys()):
+        await strategy_manager.stop_strategy(strategy_id)
 
 
 # Create FastAPI app

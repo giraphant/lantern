@@ -20,7 +20,9 @@ export default function Home() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch('/api/strategies')
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:38888'
+
+    fetch(`${API_URL}/api/strategies`)
       .then(res => res.json())
       .then(data => {
         setStrategies(data)

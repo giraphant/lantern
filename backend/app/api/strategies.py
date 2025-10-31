@@ -112,6 +112,8 @@ async def delete_strategy(strategy_id: str, db: AsyncSession = Depends(get_db)):
 @router.post("/{strategy_id}/start", response_model=Strategy)
 async def start_strategy(strategy_id: str, db: AsyncSession = Depends(get_db)):
     """Start a strategy."""
+    from app.services.strategy_manager import strategy_manager
+
     result = await db.execute(
         select(StrategyModel).where(StrategyModel.id == strategy_id)
     )
@@ -120,10 +122,29 @@ async def start_strategy(strategy_id: str, db: AsyncSession = Depends(get_db)):
     if not strategy:
         raise HTTPException(status_code=404, detail="Strategy not found")
 
-    # TODO: Actually start the strategy execution
-    strategy.status = "running"
-    await db.commit()
-    await db.refresh(strategy)
+    # Start strategy execution
+    try:
+        config = {
+            'exchange_a': strategy.exchange_a,
+            'exchange_b': strategy.exchange_b,
+            'symbol': strategy.symbol,
+            'size': float(strategy.size),
+            'max_position': float(strategy.max_position),
+            'build_threshold_apr': float(strategy.build_threshold_apr),
+            'close_threshold_apr': float(strategy.close_threshold_apr),
+            'check_interval': strategy.check_interval,
+        }
+
+        await strategy_manager.start_strategy(strategy_id, config)
+
+        strategy.status = "running"
+        await db.commit()
+        await db.refresh(strategy)
+
+    except Exception as e:
+        strategy.status = "error"
+        await db.commit()
+        raise HTTPException(status_code=500, detail=f"Failed to start strategy: {str(e)}")
 
     return strategy
 
@@ -131,6 +152,8 @@ async def start_strategy(strategy_id: str, db: AsyncSession = Depends(get_db)):
 @router.post("/{strategy_id}/stop", response_model=Strategy)
 async def stop_strategy(strategy_id: str, db: AsyncSession = Depends(get_db)):
     """Stop a strategy."""
+    from app.services.strategy_manager import strategy_manager
+
     result = await db.execute(
         select(StrategyModel).where(StrategyModel.id == strategy_id)
     )
@@ -139,9 +162,15 @@ async def stop_strategy(strategy_id: str, db: AsyncSession = Depends(get_db)):
     if not strategy:
         raise HTTPException(status_code=404, detail="Strategy not found")
 
-    # TODO: Actually stop the strategy execution
-    strategy.status = "stopped"
-    await db.commit()
-    await db.refresh(strategy)
+    # Stop strategy execution
+    try:
+        await strategy_manager.stop_strategy(strategy_id)
+
+        strategy.status = "stopped"
+        await db.commit()
+        await db.refresh(strategy)
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to stop strategy: {str(e)}")
 
     return strategy
