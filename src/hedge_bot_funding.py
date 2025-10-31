@@ -301,11 +301,12 @@ class HedgeBotFunding:
                     await self._handle_winddown_phase(check_result.profitable_side, spread)
 
                 elif check_result.action == FundingAction.HOLD:
-                    # 估算收益
-                    if abs(position.total_position) > Decimal("0.1"):
+                    # 估算收益（使用单侧仓位）
+                    single_side_position = max(abs(position.grvt_position), abs(position.lighter_position))
+                    if single_side_position > Decimal("0.1"):
                         daily_profit = FundingRateChecker.estimate_daily_profit(
                             spread=spread,
-                            position_size=abs(position.total_position)
+                            position_size=single_side_position
                         )
                         self.logger.info(f"💵 Estimated daily profit: ${daily_profit:.2f}")
 
@@ -391,6 +392,7 @@ class HedgeBotFunding:
         position = await self.executor.get_positions()
 
         if check_result.action == FundingAction.BUILD:
+            single_side_position = max(abs(position.grvt_position), abs(position.lighter_position))
             text = f"""
 📈 *Strategy Change: START BUILDING*
 
@@ -398,16 +400,17 @@ Symbol: `{self.symbol}`
 Spread: `{abs(spread.annual_spread)*100:.2f}% APR`
 Strategy: {check_result.profitable_side.upper()}
 
-Current Position: `{abs(position.total_position)} / {self.max_position}`
+Current Position: `{single_side_position} / {self.max_position}` (single side)
 
 Bot will now accumulate position gradually.
 """
         elif check_result.action == FundingAction.WINDDOWN:
-            # 计算已持仓时的收益
-            if abs(position.total_position) > Decimal("0.1"):
+            # 计算已持仓时的收益（使用单侧仓位）
+            single_side_position = max(abs(position.grvt_position), abs(position.lighter_position))
+            if single_side_position > Decimal("0.1"):
                 daily_profit = FundingRateChecker.estimate_daily_profit(
                     spread=spread,
-                    position_size=abs(position.total_position)
+                    position_size=single_side_position
                 )
                 profit_text = f"\nCurrent earnings: `${daily_profit:.2f}/day`"
             else:
@@ -420,16 +423,17 @@ Symbol: `{self.symbol}`
 Spread: `{abs(spread.annual_spread)*100:.2f}% APR`
 Reason: {check_result.reason}
 
-Current Position: `{abs(position.total_position)}`{profit_text}
+Current Position: `{single_side_position}` (single side){profit_text}
 
 Bot will now gradually close positions.
 """
         elif check_result.action == FundingAction.HOLD:
-            # 从非HOLD状态进入HOLD
-            if abs(position.total_position) > Decimal("0.1"):
+            # 从非HOLD状态进入HOLD（使用单侧仓位）
+            single_side_position = max(abs(position.grvt_position), abs(position.lighter_position))
+            if single_side_position > Decimal("0.1"):
                 daily_profit = FundingRateChecker.estimate_daily_profit(
                     spread=spread,
-                    position_size=abs(position.total_position)
+                    position_size=single_side_position
                 )
                 text = f"""
 ⏸️ *Strategy Change: HOLDING*
@@ -437,7 +441,7 @@ Bot will now gradually close positions.
 Symbol: `{self.symbol}`
 Spread: `{abs(spread.annual_spread)*100:.2f}% APR`
 
-Position: `{abs(position.total_position)} / {self.max_position}`
+Position: `{single_side_position} / {self.max_position}` (single side)
 Strategy: {check_result.profitable_side.upper()}
 
 💰 Earning: `${daily_profit:.2f}/day`
@@ -502,13 +506,14 @@ Build: `{self.funding_build_threshold*100:.2f}% APR`
 Close: `{self.funding_close_threshold*100:.2f}% APR`
 """
 
-            # 如果有仓位，估算收益
-            if abs(position.total_position) > Decimal("0.1"):
+            # 如果有仓位，估算收益（使用单侧仓位）
+            single_side_position = max(abs(position.grvt_position), abs(position.lighter_position))
+            if single_side_position > Decimal("0.1"):
                 daily_profit = FundingRateChecker.estimate_daily_profit(
                     spread=spread,
-                    position_size=abs(position.total_position)
+                    position_size=single_side_position
                 )
-                status += f"\n💵 Estimated: `${daily_profit:.2f}/day`"
+                status += f"\n💵 Estimated: `${daily_profit:.2f}/day` (based on {single_side_position} single side)"
 
             return status
 
@@ -550,12 +555,15 @@ Max Imbalance: `{self.max_imbalance}`
             spread = await self.get_funding_spread()
             position = await self.executor.get_positions()
 
-            if abs(position.total_position) < Decimal("0.1"):
+            # 使用单侧仓位
+            single_side_position = max(abs(position.grvt_position), abs(position.lighter_position))
+
+            if single_side_position < Decimal("0.1"):
                 return "📊 *Profit Estimate*\n\nNo active position"
 
             daily_profit = FundingRateChecker.estimate_daily_profit(
                 spread=spread,
-                position_size=abs(position.total_position)
+                position_size=single_side_position
             )
 
             # 估算月度和年度收益
@@ -565,7 +573,7 @@ Max Imbalance: `{self.max_imbalance}`
             profit_text = f"""
 💰 *Profit Estimate*
 
-Position Size: `${abs(position.total_position):.2f}`
+Position Size: `${single_side_position:.2f}` (single side)
 Spread: `{abs(spread.annual_spread)*100:.2f}% APR`
 
 *Estimated Earnings:*

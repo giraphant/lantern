@@ -65,7 +65,10 @@ class FundingRateChecker:
         """
         # 使用年化费率差的绝对值
         annual_spread = abs(spread.annual_spread)
-        current_position = abs(position.total_position)
+
+        # 使用单侧仓位（对冲策略中两边应该差不多，取绝对值较大的）
+        # 例如：GRVT=+5, Lighter=-5 → 单侧仓位=5（而非total_position=0）
+        current_position = max(abs(position.grvt_position), abs(position.lighter_position))
 
         # ========== 判断1: 费率差足够大 + 仓位未满 → BUILD ==========
         if annual_spread >= build_threshold_apr and current_position < max_position:
