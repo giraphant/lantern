@@ -23,6 +23,7 @@ logging.getLogger('pysdk').setLevel(logging.ERROR)
 
 from exchanges.grvt import GrvtClient
 from exchanges.lighter import LighterClient
+from exchanges.binance import BinanceClient
 from hedge.safety_checker import SafetyChecker, SafetyAction
 from hedge.rebalancer import Rebalancer, TradeAction
 from hedge.trading_executor import TradingExecutor
@@ -50,12 +51,14 @@ class HedgeBotFunding:
         self.logger = self._setup_logger()
         self.load_config()
 
-        # 初始化交易所客户端
-        self.grvt = self._init_grvt_client()
-        self.lighter = self._init_lighter_client()
+        # 初始化交易所客户端（动态选择）
+        self.exchange_a = self._init_exchange(self.exchange_a_type)
+        self.exchange_b = self._init_exchange(self.exchange_b_type)
+
+        self.logger.info(f"Using exchanges: {self.exchange_a_type} <-> {self.exchange_b_type}")
 
         # 初始化模块
-        self.executor = TradingExecutor(self.grvt, self.lighter, self.logger)
+        self.executor = TradingExecutor(self.exchange_a, self.exchange_b, self.logger)
         self.notifier = PushoverNotifier()
 
         # 初始化Telegram Bot（如果配置了）
@@ -82,10 +85,9 @@ class HedgeBotFunding:
                 dotenv.load_dotenv(env_path, override=True)
                 break
 
-        # API配置
-        self.grvt_api_key = os.getenv("GRVT_API_KEY")
-        self.grvt_private_key = os.getenv("GRVT_PRIVATE_KEY")
-        self.lighter_private_key = os.getenv("LIGHTER_PRIVATE_KEY") or os.getenv("LIGHTER_API_PRIVATE_KEY")
+        # 交易所选择（支持动态配置）
+        self.exchange_a_type = os.getenv("EXCHANGE_A", "GRVT").upper()
+        self.exchange_b_type = os.getenv("EXCHANGE_B", "Lighter").upper()
 
         # 交易参数
         self.symbol = os.getenv("TRADING_SYMBOL", "BTC")
@@ -102,18 +104,38 @@ class HedgeBotFunding:
         self.max_total_position = self.max_position * Decimal("1.5")
         self.max_imbalance = self.order_quantity * Decimal("3")
 
-        if not all([self.grvt_api_key, self.grvt_private_key, self.lighter_private_key]):
-            raise ValueError("Missing API keys")
+    def _init_exchange(self, exchange_type: str):
+        """
+        工厂方法：根据类型初始化交易所客户端
 
-        # 确保环境变量可用
-        if not os.getenv("LIGHTER_PRIVATE_KEY"):
-            os.environ["LIGHTER_PRIVATE_KEY"] = self.lighter_private_key
+        Args:
+            exchange_type: 交易所类型 (GRVT, LIGHTER, BINANCE, etc.)
+
+        Returns:
+            BaseExchangeClient: 交易所客户端实例
+        """
+        exchange_type = exchange_type.upper()
+
+        if exchange_type == "GRVT":
+            return self._init_grvt_client()
+        elif exchange_type == "LIGHTER":
+            return self._init_lighter_client()
+        elif exchange_type == "BINANCE":
+            return self._init_binance_client()
+        else:
+            raise ValueError(f"Unsupported exchange type: {exchange_type}")
 
     def _init_grvt_client(self):
         """初始化GRVT客户端"""
+        grvt_api_key = os.getenv("GRVT_API_KEY")
+        grvt_private_key = os.getenv("GRVT_PRIVATE_KEY")
+
+        if not grvt_api_key or not grvt_private_key:
+            raise ValueError("GRVT_API_KEY and GRVT_PRIVATE_KEY are required")
+
         config = Config(
-            api_key=self.grvt_api_key,
-            priv_key_file=self.grvt_private_key,
+            api_key=grvt_api_key,
+            priv_key_file=grvt_private_key,
             ticker=self.symbol,
             quantity=self.order_quantity,
             block_order_recreation=False,
@@ -123,6 +145,15 @@ class HedgeBotFunding:
 
     def _init_lighter_client(self):
         """初始化Lighter客户端"""
+        lighter_private_key = os.getenv("LIGHTER_PRIVATE_KEY") or os.getenv("LIGHTER_API_PRIVATE_KEY")
+
+        if not lighter_private_key:
+            raise ValueError("LIGHTER_PRIVATE_KEY is required")
+
+        # 确保环境变量可用
+        if not os.getenv("LIGHTER_PRIVATE_KEY"):
+            os.environ["LIGHTER_PRIVATE_KEY"] = lighter_private_key
+
         config = Config(
             ticker=self.symbol,
             quantity=self.order_quantity,
@@ -130,6 +161,20 @@ class HedgeBotFunding:
             close_order_side="sell"
         )
         return LighterClient(config)
+
+    def _init_binance_client(self):
+        """初始化Binance客户端"""
+        binance_api_key = os.getenv("BINANCE_API_KEY")
+        binance_secret_key = os.getenv("BINANCE_SECRET_KEY")
+
+        if not binance_api_key or not binance_secret_key:
+            raise ValueError("BINANCE_API_KEY and BINANCE_SECRET_KEY are required")
+
+        config = Config(
+            ticker=self.symbol,
+            quantity=self.order_quantity
+        )
+        return BinanceClient(config)
 
     def _init_telegram_bot(self):
         """初始化Telegram Bot"""
@@ -159,11 +204,11 @@ class HedgeBotFunding:
     async def connect(self):
         """连接交易所和Telegram Bot"""
         self.logger.info("Connecting to exchanges...")
-        await self.grvt.connect()
-        self.logger.info("✓ GRVT connected")
+        await self.exchange_a.connect()
+        self.logger.info(f"✓ {self.exchange_a_type} connected")
 
-        await self.lighter.connect()
-        self.logger.info("✓ Lighter connected")
+        await self.exchange_b.connect()
+        self.logger.info(f"✓ {self.exchange_b_type} connected")
 
         # 启动Telegram Bot
         if self.telegram_bot:
@@ -172,29 +217,29 @@ class HedgeBotFunding:
 
     async def get_funding_spread(self) -> FundingRateSpread:
         """获取归一化的费率差"""
-        # 获取GRVT费率和周期
-        grvt_rate = await self.grvt.get_funding_rate(self.grvt.config.contract_id)
-        grvt_interval = await self.grvt.get_funding_interval_hours(self.grvt.config.contract_id)
+        # 获取交易所A费率和周期
+        exchange_a_rate = await self.exchange_a.get_funding_rate(self.exchange_a.config.contract_id)
+        exchange_a_interval = await self.exchange_a.get_funding_interval_hours(self.exchange_a.config.contract_id)
 
-        # 获取Lighter费率和周期
-        lighter_rate = await self.lighter.get_funding_rate(self.lighter.config.contract_id)
-        lighter_interval = await self.lighter.get_funding_interval_hours(self.lighter.config.contract_id)
+        # 获取交易所B费率和周期
+        exchange_b_rate = await self.exchange_b.get_funding_rate(self.exchange_b.config.contract_id)
+        exchange_b_interval = await self.exchange_b.get_funding_interval_hours(self.exchange_b.config.contract_id)
 
         # 创建费率数据
-        grvt_data = FundingRateData(
-            rate=grvt_rate,
-            interval_hours=grvt_interval,
-            exchange_name="GRVT"
+        exchange_a_data = FundingRateData(
+            rate=exchange_a_rate,
+            interval_hours=exchange_a_interval,
+            exchange_name=self.exchange_a_type
         )
 
-        lighter_data = FundingRateData(
-            rate=lighter_rate,
-            interval_hours=lighter_interval,
-            exchange_name="Lighter"
+        exchange_b_data = FundingRateData(
+            rate=exchange_b_rate,
+            interval_hours=exchange_b_interval,
+            exchange_name=self.exchange_b_type
         )
 
         # 计算归一化费率差
-        return FundingRateNormalizer.calculate_spread(grvt_data, lighter_data)
+        return FundingRateNormalizer.calculate_spread(exchange_a_data, exchange_b_data)
 
     async def run(self):
         """主循环"""
@@ -380,8 +425,8 @@ class HedgeBotFunding:
             if self.telegram_bot:
                 await self.telegram_bot.stop()
 
-            await self.grvt.disconnect()
-            await self.lighter.disconnect()
+            await self.exchange_a.disconnect()
+            await self.exchange_b.disconnect()
         except:
             pass
 
