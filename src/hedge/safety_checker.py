@@ -14,13 +14,24 @@ from typing import NamedTuple, Optional
 
 class PositionState(NamedTuple):
     """仓位状态"""
-    grvt_position: Decimal
-    lighter_position: Decimal
+    exchange_a_position: Decimal
+    exchange_b_position: Decimal
+
+    # 保持向后兼容的别名
+    @property
+    def grvt_position(self) -> Decimal:
+        """向后兼容：返回exchange_a_position"""
+        return self.exchange_a_position
+
+    @property
+    def lighter_position(self) -> Decimal:
+        """向后兼容：返回exchange_b_position"""
+        return self.exchange_b_position
 
     @property
     def total_position(self) -> Decimal:
         """总仓位"""
-        return self.grvt_position + self.lighter_position
+        return self.exchange_a_position + self.exchange_b_position
 
     @property
     def imbalance(self) -> Decimal:
@@ -48,8 +59,19 @@ class SafetyCheckResult(NamedTuple):
 
 class PendingOrdersInfo(NamedTuple):
     """未成交订单信息"""
-    grvt_pending_count: int
-    lighter_pending_count: int
+    exchange_a_pending_count: int
+    exchange_b_pending_count: int
+
+    # 保持向后兼容的别名
+    @property
+    def grvt_pending_count(self) -> int:
+        """向后兼容：返回exchange_a_pending_count"""
+        return self.exchange_a_pending_count
+
+    @property
+    def lighter_pending_count(self) -> int:
+        """向后兼容：返回exchange_b_pending_count"""
+        return self.exchange_b_pending_count
 
 
 class SafetyChecker:

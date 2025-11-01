@@ -2,7 +2,7 @@
 交易执行器 - 负责调用exchange客户端执行交易。
 
 职责：
-1. 调用GRVT和Lighter的客户端方法
+1. 调用Exchange A和Exchange B的客户端方法
 2. 等待订单成交
 3. 返回执行结果
 4. 不包含业务逻辑判断
@@ -20,10 +20,10 @@ from hedge.safety_checker import PositionState, PendingOrdersInfo
 class ExecutionResult(NamedTuple):
     """执行结果"""
     success: bool
-    grvt_order_id: Optional[str] = None
-    grvt_price: Optional[Decimal] = None
-    lighter_order_id: Optional[str] = None
-    lighter_price: Optional[Decimal] = None
+    exchange_a_order_id: Optional[str] = None
+    exchange_a_price: Optional[Decimal] = None
+    exchange_b_order_id: Optional[str] = None
+    exchange_b_price: Optional[Decimal] = None
     error: Optional[str] = None
 
 
@@ -34,17 +34,17 @@ class TradingExecutor:
     封装所有与交易所的交互，但不包含业务逻辑。
     """
 
-    def __init__(self, grvt_client, lighter_client, logger=None):
+    def __init__(self, exchange_a_client, exchange_b_client, logger=None):
         """
         初始化执行器。
 
         Args:
-            grvt_client: GRVT交易所客户端
-            lighter_client: Lighter交易所客户端
+            exchange_a_client: 交易所A客户端 (主交易所，使用做市单)
+            exchange_b_client: 交易所B客户端 (对冲交易所，使用市价单)
             logger: 日志记录器
         """
-        self.grvt = grvt_client
-        self.lighter = lighter_client
+        self.exchange_a = exchange_a_client
+        self.exchange_b = exchange_b_client
         self.logger = logger or logging.getLogger(__name__)
 
     async def get_positions(self) -> PositionState:
@@ -54,12 +54,12 @@ class TradingExecutor:
         Returns:
             PositionState
         """
-        grvt_pos = await self.grvt.get_account_positions()
-        lighter_pos = await self.lighter.get_account_positions()
+        exchange_a_pos = await self.exchange_a.get_account_positions()
+        exchange_b_pos = await self.exchange_b.get_account_positions()
 
         return PositionState(
-            grvt_position=grvt_pos,
-            lighter_position=lighter_pos
+            exchange_a_position=exchange_a_pos,
+            exchange_b_position=exchange_b_pos
         )
 
     async def get_pending_orders(self) -> PendingOrdersInfo:
@@ -71,27 +71,27 @@ class TradingExecutor:
         """
         try:
             # 获取GRVT未成交订单
-            grvt_orders = await self.grvt.get_active_orders(
-                contract_id=self.grvt.config.contract_id
+            exchange_a_orders = await self.exchange_a.get_active_orders(
+                contract_id=self.exchange_a.config.contract_id
             )
-            grvt_pending_count = len(grvt_orders)
+            exchange_a_pending_count = len(exchange_a_orders)
         except Exception as e:
             self.logger.error(f"Failed to get GRVT pending orders: {e}")
-            grvt_pending_count = 0
+            exchange_a_pending_count = 0
 
         try:
             # 获取Lighter未成交订单
-            lighter_orders = await self.lighter.get_active_orders(
-                contract_id=self.lighter.config.contract_id
+            exchange_b_orders = await self.exchange_b.get_active_orders(
+                contract_id=self.exchange_b.config.contract_id
             )
-            lighter_pending_count = len(lighter_orders)
+            exchange_b_pending_count = len(exchange_b_orders)
         except Exception as e:
             self.logger.error(f"Failed to get Lighter pending orders: {e}")
-            lighter_pending_count = 0
+            exchange_b_pending_count = 0
 
         return PendingOrdersInfo(
-            grvt_pending_count=grvt_pending_count,
-            lighter_pending_count=lighter_pending_count
+            exchange_a_pending_count=exchange_a_pending_count,
+            exchange_b_pending_count=exchange_b_pending_count
         )
 
     async def execute_trade(
@@ -141,28 +141,28 @@ class TradingExecutor:
         try:
             # 1. GRVT买入（做市单）
             self.logger.info(f"Placing GRVT buy order: {quantity}")
-            grvt_result = await self.grvt.place_open_order(
-                contract_id=self.grvt.config.contract_id,
+            exchange_a_result = await self.exchange_a.place_open_order(
+                contract_id=self.exchange_a.config.contract_id,
                 quantity=quantity,
                 direction="buy"
             )
 
-            if not grvt_result.success:
+            if not exchange_a_result.success:
                 return ExecutionResult(
                     success=False,
-                    error=f"GRVT order failed: {grvt_result.error_message}"
+                    error=f"GRVT order failed: {exchange_a_result.error_message}"
                 )
 
-            self.logger.info(f"✓ GRVT buy order placed: {grvt_result.order_id} @ {grvt_result.price}")
+            self.logger.info(f"✓ GRVT buy order placed: {exchange_a_result.order_id} @ {exchange_a_result.price}")
 
             # 2. 等待GRVT订单成交
             if wait_for_fill:
                 self.logger.info("Waiting for GRVT order to fill...")
-                filled = await self._wait_for_fill(grvt_result.order_id, timeout)
+                filled = await self._wait_for_fill(exchange_a_result.order_id, timeout)
 
                 if not filled:
                     self.logger.warning("GRVT order not filled, cancelling...")
-                    await self.grvt.cancel_order(grvt_result.order_id)
+                    await self.exchange_a.cancel_order(exchange_a_result.order_id)
                     return ExecutionResult(
                         success=False,
                         error="GRVT order not filled within timeout"
@@ -172,28 +172,28 @@ class TradingExecutor:
 
             # 3. Lighter卖出（对冲）
             self.logger.info(f"Placing Lighter sell order: {quantity}")
-            lighter_result = await self.lighter.place_open_order(
-                contract_id=self.lighter.config.contract_id,
+            exchange_b_result = await self.exchange_b.place_open_order(
+                contract_id=self.exchange_b.config.contract_id,
                 quantity=quantity,
                 direction="sell"
             )
 
-            if not lighter_result.success:
+            if not exchange_b_result.success:
                 return ExecutionResult(
                     success=False,
-                    grvt_order_id=grvt_result.order_id,
-                    grvt_price=grvt_result.price,
-                    error=f"Lighter order failed: {lighter_result.error_message}"
+                    grvt_order_id=exchange_a_result.order_id,
+                    grvt_price=exchange_a_result.price,
+                    error=f"Lighter order failed: {exchange_b_result.error_message}"
                 )
 
-            self.logger.info(f"✓ Lighter sell order placed @ {lighter_result.price}")
+            self.logger.info(f"✓ Lighter sell order placed @ {exchange_b_result.price}")
 
             return ExecutionResult(
                 success=True,
-                grvt_order_id=grvt_result.order_id,
-                grvt_price=grvt_result.price,
-                lighter_order_id=lighter_result.order_id,
-                lighter_price=lighter_result.price
+                grvt_order_id=exchange_a_result.order_id,
+                grvt_price=exchange_a_result.price,
+                lighter_order_id=exchange_b_result.order_id,
+                lighter_price=exchange_b_result.price
             )
 
         except Exception as e:
@@ -209,28 +209,28 @@ class TradingExecutor:
         try:
             # 1. GRVT卖出（做市单）
             self.logger.info(f"Placing GRVT sell order: {quantity}")
-            grvt_result = await self.grvt.place_open_order(
-                contract_id=self.grvt.config.contract_id,
+            exchange_a_result = await self.exchange_a.place_open_order(
+                contract_id=self.exchange_a.config.contract_id,
                 quantity=quantity,
                 direction="sell"
             )
 
-            if not grvt_result.success:
+            if not exchange_a_result.success:
                 return ExecutionResult(
                     success=False,
-                    error=f"GRVT order failed: {grvt_result.error_message}"
+                    error=f"GRVT order failed: {exchange_a_result.error_message}"
                 )
 
-            self.logger.info(f"✓ GRVT sell order placed: {grvt_result.order_id} @ {grvt_result.price}")
+            self.logger.info(f"✓ GRVT sell order placed: {exchange_a_result.order_id} @ {exchange_a_result.price}")
 
             # 2. 等待成交
             if wait_for_fill:
                 self.logger.info("Waiting for GRVT order to fill...")
-                filled = await self._wait_for_fill(grvt_result.order_id, timeout)
+                filled = await self._wait_for_fill(exchange_a_result.order_id, timeout)
 
                 if not filled:
                     self.logger.warning("GRVT order not filled, cancelling...")
-                    await self.grvt.cancel_order(grvt_result.order_id)
+                    await self.exchange_a.cancel_order(exchange_a_result.order_id)
                     return ExecutionResult(
                         success=False,
                         error="GRVT order not filled within timeout"
@@ -240,28 +240,28 @@ class TradingExecutor:
 
             # 3. Lighter买入（对冲）
             self.logger.info(f"Placing Lighter buy order: {quantity}")
-            lighter_result = await self.lighter.place_open_order(
-                contract_id=self.lighter.config.contract_id,
+            exchange_b_result = await self.exchange_b.place_open_order(
+                contract_id=self.exchange_b.config.contract_id,
                 quantity=quantity,
                 direction="buy"
             )
 
-            if not lighter_result.success:
+            if not exchange_b_result.success:
                 return ExecutionResult(
                     success=False,
-                    grvt_order_id=grvt_result.order_id,
-                    grvt_price=grvt_result.price,
-                    error=f"Lighter order failed: {lighter_result.error_message}"
+                    grvt_order_id=exchange_a_result.order_id,
+                    grvt_price=exchange_a_result.price,
+                    error=f"Lighter order failed: {exchange_b_result.error_message}"
                 )
 
-            self.logger.info(f"✓ Lighter buy order placed @ {lighter_result.price}")
+            self.logger.info(f"✓ Lighter buy order placed @ {exchange_b_result.price}")
 
             return ExecutionResult(
                 success=True,
-                grvt_order_id=grvt_result.order_id,
-                grvt_price=grvt_result.price,
-                lighter_order_id=lighter_result.order_id,
-                lighter_price=lighter_result.price
+                grvt_order_id=exchange_a_result.order_id,
+                grvt_price=exchange_a_result.price,
+                lighter_order_id=exchange_b_result.order_id,
+                lighter_price=exchange_b_result.price
             )
 
         except Exception as e:
@@ -277,24 +277,24 @@ class TradingExecutor:
         """
         try:
             self.logger.info(f"Rebalancing: Lighter sell {quantity}")
-            lighter_result = await self.lighter.place_open_order(
-                contract_id=self.lighter.config.contract_id,
+            exchange_b_result = await self.exchange_b.place_open_order(
+                contract_id=self.exchange_b.config.contract_id,
                 quantity=quantity,
                 direction="sell"
             )
 
-            if not lighter_result.success:
+            if not exchange_b_result.success:
                 return ExecutionResult(
                     success=False,
-                    error=f"Lighter rebalance sell failed: {lighter_result.error_message}"
+                    error=f"Lighter rebalance sell failed: {exchange_b_result.error_message}"
                 )
 
-            self.logger.info(f"✓ Lighter rebalance sell @ {lighter_result.price}")
+            self.logger.info(f"✓ Lighter rebalance sell @ {exchange_b_result.price}")
 
             return ExecutionResult(
                 success=True,
-                lighter_order_id=lighter_result.order_id,
-                lighter_price=lighter_result.price
+                lighter_order_id=exchange_b_result.order_id,
+                lighter_price=exchange_b_result.price
             )
 
         except Exception as e:
@@ -310,24 +310,24 @@ class TradingExecutor:
         """
         try:
             self.logger.info(f"Rebalancing: Lighter buy {quantity}")
-            lighter_result = await self.lighter.place_open_order(
-                contract_id=self.lighter.config.contract_id,
+            exchange_b_result = await self.exchange_b.place_open_order(
+                contract_id=self.exchange_b.config.contract_id,
                 quantity=quantity,
                 direction="buy"
             )
 
-            if not lighter_result.success:
+            if not exchange_b_result.success:
                 return ExecutionResult(
                     success=False,
-                    error=f"Lighter rebalance buy failed: {lighter_result.error_message}"
+                    error=f"Lighter rebalance buy failed: {exchange_b_result.error_message}"
                 )
 
-            self.logger.info(f"✓ Lighter rebalance buy @ {lighter_result.price}")
+            self.logger.info(f"✓ Lighter rebalance buy @ {exchange_b_result.price}")
 
             return ExecutionResult(
                 success=True,
-                lighter_order_id=lighter_result.order_id,
-                lighter_price=lighter_result.price
+                lighter_order_id=exchange_b_result.order_id,
+                lighter_price=exchange_b_result.price
             )
 
         except Exception as e:
@@ -350,7 +350,7 @@ class TradingExecutor:
 
         while time.time() - start < timeout:
             try:
-                order_info = await self.grvt.get_order_info(order_id=order_id)
+                order_info = await self.exchange_a.get_order_info(order_id=order_id)
 
                 if order_info and order_info.status == 'FILLED':
                     return True
@@ -370,8 +370,8 @@ class TradingExecutor:
         """取消所有未成交订单"""
         try:
             self.logger.info("Cancelling all orders...")
-            await self.grvt.cancel_all_orders()
-            await self.lighter.cancel_all_orders()
+            await self.exchange_a.cancel_all_orders()
+            await self.exchange_b.cancel_all_orders()
             self.logger.info("✓ All orders cancelled")
         except Exception as e:
             self.logger.error(f"Error cancelling orders: {e}")

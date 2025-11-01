@@ -22,8 +22,7 @@ logging.getLogger('urllib3').setLevel(logging.ERROR)
 logging.getLogger('asyncio').setLevel(logging.ERROR)
 logging.getLogger('pysdk').setLevel(logging.ERROR)
 
-from exchanges.grvt import GrvtClient
-from exchanges.lighter import LighterClient
+from exchanges.factory import ExchangeFactory
 from hedge.safety_checker import SafetyChecker, PositionState, SafetyAction
 from hedge.rebalancer import Rebalancer, TradeAction
 from hedge.trading_executor import TradingExecutor
@@ -45,12 +44,18 @@ class HedgeBotV3:
         self.logger = self._setup_logger()
         self.load_config()
 
-        # 初始化交易所客户端
-        self.grvt = self._init_grvt_client()
-        self.lighter = self._init_lighter_client()
+        # 初始化交易所客户端 (使用工厂模式)
+        self.exchange_a = self._init_exchange_client(
+            self.exchange_a_name,
+            self.exchange_a_config
+        )
+        self.exchange_b = self._init_exchange_client(
+            self.exchange_b_name,
+            self.exchange_b_config
+        )
 
         # 初始化模块
-        self.executor = TradingExecutor(self.grvt, self.lighter, self.logger)
+        self.executor = TradingExecutor(self.exchange_a, self.exchange_b, self.logger)
         self.notifier = PushoverNotifier()
 
     def _setup_logger(self):
@@ -71,10 +76,9 @@ class HedgeBotV3:
                 dotenv.load_dotenv(env_path, override=True)
                 break
 
-        # API配置
-        self.grvt_api_key = os.getenv("GRVT_API_KEY")
-        self.grvt_private_key = os.getenv("GRVT_PRIVATE_KEY")
-        self.lighter_private_key = os.getenv("LIGHTER_PRIVATE_KEY") or os.getenv("LIGHTER_API_PRIVATE_KEY")
+        # 交易所配置
+        self.exchange_a_name = os.getenv("EXCHANGE_A", "GRVT").upper()
+        self.exchange_b_name = os.getenv("EXCHANGE_B", "LIGHTER").upper()
 
         # 交易参数
         self.symbol = os.getenv("TRADING_SYMBOL", "BNB")
@@ -92,43 +96,83 @@ class HedgeBotV3:
         self.max_total_position = self.order_quantity * self.target_cycles * Decimal("1.5")
         self.max_imbalance = self.order_quantity * Decimal("3")
 
-        if not all([self.grvt_api_key, self.grvt_private_key, self.lighter_private_key]):
-            raise ValueError("Missing API keys")
+        # 为每个交易所准备配置
+        self.exchange_a_config = self._prepare_exchange_config(self.exchange_a_name)
+        self.exchange_b_config = self._prepare_exchange_config(self.exchange_b_name)
 
-        # 确保环境变量可用
-        if not os.getenv("LIGHTER_PRIVATE_KEY"):
-            os.environ["LIGHTER_PRIVATE_KEY"] = self.lighter_private_key
+    def _prepare_exchange_config(self, exchange_name: str) -> Config:
+        """为指定交易所准备配置"""
+        exchange_name = exchange_name.upper()
 
-    def _init_grvt_client(self):
-        """初始化GRVT客户端"""
-        config = Config(
-            api_key=self.grvt_api_key,
-            priv_key_file=self.grvt_private_key,
-            ticker=self.symbol,
-            quantity=self.order_quantity,
-            block_order_recreation=False,
-            block_orders=False
-        )
-        return GrvtClient(config)
+        # 基础配置
+        base_config = {
+            "ticker": self.symbol,
+            "quantity": self.order_quantity,
+        }
 
-    def _init_lighter_client(self):
-        """初始化Lighter客户端"""
-        config = Config(
-            ticker=self.symbol,
-            quantity=self.order_quantity,
-            direction="long",
-            close_order_side="sell"
-        )
-        return LighterClient(config)
+        # 根据交易所类型添加特定配置
+        if exchange_name == "GRVT":
+            base_config.update({
+                "api_key": os.getenv("GRVT_API_KEY"),
+                "priv_key_file": os.getenv("GRVT_PRIVATE_KEY"),
+                "block_order_recreation": False,
+                "block_orders": False
+            })
+            if not all([base_config["api_key"], base_config["priv_key_file"]]):
+                raise ValueError("Missing GRVT API keys (GRVT_API_KEY, GRVT_PRIVATE_KEY)")
+
+        elif exchange_name == "LIGHTER":
+            lighter_key = os.getenv("LIGHTER_PRIVATE_KEY") or os.getenv("LIGHTER_API_PRIVATE_KEY")
+            base_config.update({
+                "direction": "long",
+                "close_order_side": "sell"
+            })
+            if not lighter_key:
+                raise ValueError("Missing LIGHTER_PRIVATE_KEY")
+            # 确保环境变量可用
+            if not os.getenv("LIGHTER_PRIVATE_KEY"):
+                os.environ["LIGHTER_PRIVATE_KEY"] = lighter_key
+
+        elif exchange_name == "BINANCE":
+            base_config.update({
+                "api_key": os.getenv("BINANCE_API_KEY"),
+                "api_secret": os.getenv("BINANCE_API_SECRET"),
+            })
+            if not all([base_config.get("api_key"), base_config.get("api_secret")]):
+                raise ValueError("Missing BINANCE API keys (BINANCE_API_KEY, BINANCE_API_SECRET)")
+
+        elif exchange_name == "BACKPACK":
+            base_config.update({
+                "api_key": os.getenv("BACKPACK_API_KEY"),
+                "api_secret": os.getenv("BACKPACK_API_SECRET"),
+            })
+            if not all([base_config.get("api_key"), base_config.get("api_secret")]):
+                raise ValueError("Missing BACKPACK API keys (BACKPACK_API_KEY, BACKPACK_API_SECRET)")
+
+        else:
+            # 其他交易所的通用配置
+            self.logger.warning(f"Using generic config for {exchange_name}, may need customization")
+
+        return Config(**base_config)
+
+    def _init_exchange_client(self, exchange_name: str, config: Config):
+        """使用工厂模式初始化交易所客户端"""
+        try:
+            client = ExchangeFactory.create_exchange(exchange_name.lower(), config)
+            self.logger.info(f"✓ Initialized {exchange_name} exchange client")
+            return client
+        except Exception as e:
+            self.logger.error(f"Failed to initialize {exchange_name}: {e}")
+            raise
 
     async def connect(self):
         """连接交易所"""
-        self.logger.info("Connecting to exchanges...")
-        await self.grvt.connect()
-        self.logger.info("✓ GRVT connected")
+        self.logger.info(f"Connecting to exchanges ({self.exchange_a_name} & {self.exchange_b_name})...")
+        await self.exchange_a.connect()
+        self.logger.info(f"✓ {self.exchange_a_name} connected")
 
-        await self.lighter.connect()
-        self.logger.info("✓ Lighter connected")
+        await self.exchange_b.connect()
+        self.logger.info(f"✓ {self.exchange_b_name} connected")
 
     async def run(self):
         """主循环"""
@@ -211,8 +255,8 @@ class HedgeBotV3:
                 # ========== 步骤4: 阶段判断 ==========
                 # 根据策略方向确定BUILD阶段的交易方向
                 build_side = "buy" if self.direction == "long" else "sell"
-                last_order = await self.grvt.get_last_filled_order(
-                    contract_id=self.grvt.config.contract_id,
+                last_order = await self.exchange_a.get_last_filled_order(
+                    contract_id=self.exchange_a.config.contract_id,
                     build_side=build_side
                 )
 
@@ -308,8 +352,8 @@ class HedgeBotV3:
         """清理资源"""
         try:
             self.logger.info("Cleaning up...")
-            await self.grvt.disconnect()
-            await self.lighter.disconnect()
+            await self.exchange_a.disconnect()
+            await self.exchange_b.disconnect()
         except:
             pass
 
