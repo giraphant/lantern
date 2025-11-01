@@ -180,7 +180,7 @@ class HedgeBotV3:
 
             # 检查初始仓位
             position = await self.executor.get_positions()
-            self.logger.info(f"Initial position: GRVT={position.grvt_position}, Lighter={position.lighter_position}")
+            self.logger.info(f"Initial position: {self.exchange_a_name}={position.exchange_a_position}, {self.exchange_b_name}={position.exchange_b_position}")
 
             # 主循环 - 完全无状态，每次都从交易所获取真实状态
             while True:
@@ -212,7 +212,7 @@ class HedgeBotV3:
                     self.logger.error("   Pausing for 60 seconds...")
                     # 发送安全警告通知
                     await self.notifier.notify_warning(
-                        message=f"{safety_result.reason}\n\nPosition:\nGRVT: {position.grvt_position}\nLighter: {position.lighter_position}\nTotal: {position.total_position}\n\nBot paused for 60s",
+                        message=f"{safety_result.reason}\n\nPosition:\n{self.exchange_a_name}: {position.exchange_a_position}\n{self.exchange_b_name}: {position.exchange_b_position}\nTotal: {position.total_position}\n\nBot paused for 60s",
                         title="⚠️ Safety Limit Triggered"
                     )
                     await asyncio.sleep(60)
@@ -306,12 +306,12 @@ class HedgeBotV3:
     async def _handle_building_phase(self, position: PositionState):
         """处理建仓阶段 - 执行固定的对冲交易"""
         if self.direction == "long":
-            # 多头策略：GRVT buy + Lighter sell
-            self.logger.info(f"📈 BUILDING (LONG): GRVT buy + Lighter sell {self.order_quantity}")
+            # 多头策略：Exchange A buy + Exchange B sell
+            self.logger.info(f"📈 BUILDING (LONG): {self.exchange_a_name} buy + {self.exchange_b_name} sell {self.order_quantity}")
             action = TradeAction.BUILD_LONG
         else:
-            # 空头策略：GRVT sell + Lighter buy
-            self.logger.info(f"📈 BUILDING (SHORT): GRVT sell + Lighter buy {self.order_quantity}")
+            # 空头策略：Exchange A sell + Exchange B buy
+            self.logger.info(f"📈 BUILDING (SHORT): {self.exchange_a_name} sell + {self.exchange_b_name} buy {self.order_quantity}")
             action = TradeAction.CLOSE_LONG
 
         result = await self.executor.execute_trade(
@@ -328,12 +328,12 @@ class HedgeBotV3:
     async def _handle_winddown_phase(self, position: PositionState):
         """处理平仓阶段 - 执行固定的对冲交易"""
         if self.direction == "long":
-            # 多头策略：GRVT sell + Lighter buy
-            self.logger.info(f"📉 WINDING DOWN (LONG): GRVT sell + Lighter buy {self.order_quantity}")
+            # 多头策略：Exchange A sell + Exchange B buy
+            self.logger.info(f"📉 WINDING DOWN (LONG): {self.exchange_a_name} sell + {self.exchange_b_name} buy {self.order_quantity}")
             action = TradeAction.CLOSE_LONG
         else:
-            # 空头策略：GRVT buy + Lighter sell
-            self.logger.info(f"📉 WINDING DOWN (SHORT): GRVT buy + Lighter sell {self.order_quantity}")
+            # 空头策略：Exchange A buy + Exchange B sell
+            self.logger.info(f"📉 WINDING DOWN (SHORT): {self.exchange_a_name} buy + {self.exchange_b_name} sell {self.order_quantity}")
             action = TradeAction.BUILD_LONG
 
         result = await self.executor.execute_trade(
