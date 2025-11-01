@@ -196,3 +196,12 @@ cython_debug/
 
 # pyenv settings
 .python-version
+
+# Frontend build files
+frontend/.next/
+frontend/node_modules/
+frontend/next-env.d.ts
+frontend/package-lock.json
+
+# Dashboard files
+DASHBOARD_USAGE.md
