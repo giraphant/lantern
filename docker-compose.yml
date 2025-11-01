@@ -10,16 +10,9 @@ services:
 
     # Environment variables - can be set in .env file or here
     environment:
-      # GRVT Configuration (Required)
-      - GRVT_API_KEY=${GRVT_API_KEY}
-      - GRVT_PRIVATE_KEY=${GRVT_PRIVATE_KEY}
-      - GRVT_TRADING_ACCOUNT_ID=${GRVT_TRADING_ACCOUNT_ID}
-      - GRVT_ENVIRONMENT=${GRVT_ENVIRONMENT:-prod}
-
-      # Lighter Configuration (Required)
-      - LIGHTER_PRIVATE_KEY=${LIGHTER_PRIVATE_KEY}
-      - LIGHTER_ACCOUNT_INDEX=${LIGHTER_ACCOUNT_INDEX:-0}
-      - LIGHTER_API_KEY_INDEX=${LIGHTER_API_KEY_INDEX:-0}
+      # Exchange Selection (Choose your exchange pair)
+      - EXCHANGE_A=${EXCHANGE_A:-GRVT}
+      - EXCHANGE_B=${EXCHANGE_B:-LIGHTER}
 
       # Trading Parameters (Optional - have defaults)
       - TRADING_SYMBOL=${TRADING_SYMBOL:-BNB}
@@ -27,6 +20,29 @@ services:
       - CYCLE_TARGET=${CYCLE_TARGET:-5}
       - CYCLE_HOLD_TIME=${CYCLE_HOLD_TIME:-180}
       - TRADING_DIRECTION=${TRADING_DIRECTION:-long}
+
+      # GRVT Configuration (if using GRVT as EXCHANGE_A or EXCHANGE_B)
+      - GRVT_API_KEY=${GRVT_API_KEY:-}
+      - GRVT_PRIVATE_KEY=${GRVT_PRIVATE_KEY:-}
+      - GRVT_TRADING_ACCOUNT_ID=${GRVT_TRADING_ACCOUNT_ID:-}
+      - GRVT_ENVIRONMENT=${GRVT_ENVIRONMENT:-prod}
+
+      # Lighter Configuration (if using LIGHTER as EXCHANGE_A or EXCHANGE_B)
+      - LIGHTER_PRIVATE_KEY=${LIGHTER_PRIVATE_KEY:-}
+      - LIGHTER_ACCOUNT_INDEX=${LIGHTER_ACCOUNT_INDEX:-0}
+      - LIGHTER_API_KEY_INDEX=${LIGHTER_API_KEY_INDEX:-0}
+
+      # Binance Configuration (if using BINANCE as EXCHANGE_A or EXCHANGE_B)
+      - BINANCE_API_KEY=${BINANCE_API_KEY:-}
+      - BINANCE_API_SECRET=${BINANCE_API_SECRET:-}
+
+      # Backpack Configuration (if using BACKPACK as EXCHANGE_A or EXCHANGE_B)
+      - BACKPACK_API_KEY=${BACKPACK_API_KEY:-}
+      - BACKPACK_API_SECRET=${BACKPACK_API_SECRET:-}
+
+      # EdgeX Configuration (if using EDGEX as EXCHANGE_A or EXCHANGE_B)
+      - EDGEX_API_KEY=${EDGEX_API_KEY:-}
+      - EDGEX_API_SECRET=${EDGEX_API_SECRET:-}
 
       # Pushover Notifications (Optional)
       - PUSHOVER_USER_KEY=${PUSHOVER_USER_KEY:-}
