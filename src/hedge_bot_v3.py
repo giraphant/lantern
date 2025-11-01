@@ -110,10 +110,21 @@ class HedgeBotV3:
             "quantity": self.order_quantity,
         }
 
-        # 根据交易所决定是否需要contract_id
-        # Lighter会自动解析ticker到contract_id,不需要预设
-        # GRVT, Backpack等需要contract_id
-        if exchange_name not in ["LIGHTER"]:
+        # 根据交易所转换symbol格式和设置contract_id
+        if exchange_name == "LIGHTER":
+            # Lighter会自动解析ticker到contract_id,不需要预设
+            # ticker保持原样(如'BTC')
+            pass
+        elif exchange_name == "BACKPACK":
+            # Backpack需要完整的交易对格式,如'BTC_USDC'
+            # 如果symbol不包含分隔符,自动添加_USDC
+            if '_' not in self.symbol and '-' not in self.symbol:
+                base_config["contract_id"] = f"{self.symbol}_USDC"
+            else:
+                # 将-替换为_
+                base_config["contract_id"] = self.symbol.replace('-', '_')
+        else:
+            # 其他交易所默认使用symbol作为contract_id
             base_config["contract_id"] = self.symbol
 
         # 根据交易所类型添加特定配置
