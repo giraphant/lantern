@@ -104,12 +104,17 @@ class HedgeBotV3:
         """为指定交易所准备配置"""
         exchange_name = exchange_name.upper()
 
-        # 基础配置 - 所有交易所都需要
+        # 基础配置
         base_config = {
             "ticker": self.symbol,
             "quantity": self.order_quantity,
-            "contract_id": self.symbol,  # 默认contract_id与ticker相同
         }
+
+        # 根据交易所决定是否需要contract_id
+        # Lighter会自动解析ticker到contract_id,不需要预设
+        # GRVT, Backpack等需要contract_id
+        if exchange_name not in ["LIGHTER"]:
+            base_config["contract_id"] = self.symbol
 
         # 根据交易所类型添加特定配置
         if exchange_name == "GRVT":
