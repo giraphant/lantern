@@ -254,15 +254,21 @@ class HedgeBotV3:
                 # ========== 步骤4: 阶段判断 ==========
                 # 根据策略方向确定BUILD阶段的交易方向
                 build_side = "buy" if self.direction == "long" else "sell"
-                last_order = await self.exchange_a.get_last_filled_order(
-                    contract_id=self.exchange_a.config.contract_id,
-                    build_side=build_side
-                )
 
+                # 尝试获取最后成交订单(如果交易所支持)
                 last_order_side = None
                 last_order_time = None
-                if last_order:
-                    last_order_side, last_order_time = last_order
+                if hasattr(self.exchange_a, 'get_last_filled_order'):
+                    try:
+                        last_order = await self.exchange_a.get_last_filled_order(
+                            contract_id=self.exchange_a.config.contract_id,
+                            build_side=build_side
+                        )
+                        if last_order:
+                            last_order_side, last_order_time = last_order
+                    except Exception as e:
+                        self.logger.debug(f"Failed to get last filled order: {e}")
+                        # 继续执行,不影响主流程
 
                 phase_info = PhaseDetector.detect_phase(
                     position=position,
