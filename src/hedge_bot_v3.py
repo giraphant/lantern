@@ -123,6 +123,8 @@ class HedgeBotV3:
             else:
                 # 将-替换为_
                 base_config["contract_id"] = self.symbol.replace('-', '_')
+            # 设置默认tick_size,会在connect时被市场数据覆盖
+            base_config["tick_size"] = Decimal("0.01")
         else:
             # 其他交易所默认使用symbol作为contract_id
             base_config["contract_id"] = self.symbol

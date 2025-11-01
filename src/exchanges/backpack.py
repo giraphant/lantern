@@ -181,6 +181,20 @@ class BackpackClient(BaseExchangeClient):
 
     async def connect(self) -> None:
         """Connect to Backpack WebSocket."""
+        # Initialize logger first
+        self.logger = TradingLogger(exchange="backpack", ticker=self.config.ticker, log_to_console=False)
+
+        # Get contract attributes if tick_size not set
+        if not hasattr(self.config, 'tick_size') or self.config.tick_size == 0:
+            try:
+                await self.get_contract_attributes()
+                self.logger.log(f"✓ Got Backpack market info: {self.config.contract_id}, tick_size={self.config.tick_size}", "INFO")
+            except Exception as e:
+                self.logger.log(f"Warning: Failed to get contract attributes: {e}", "WARNING")
+                # Set fallback tick_size
+                if not hasattr(self.config, 'tick_size'):
+                    self.config.tick_size = Decimal("0.01")
+
         # Initialize WebSocket manager
         self.ws_manager = BackpackWebSocketManager(
             public_key=self.public_key,
@@ -190,9 +204,6 @@ class BackpackClient(BaseExchangeClient):
         )
         # Pass config to WebSocket manager for order type determination
         self.ws_manager.config = self.config
-
-        # Initialize logger using the same format as helpers
-        self.logger = TradingLogger(exchange="backpack", ticker=self.config.ticker, log_to_console=False)
         self.ws_manager.set_logger(self.logger)
 
         try:
