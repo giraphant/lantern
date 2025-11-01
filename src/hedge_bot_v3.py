@@ -142,12 +142,10 @@ class HedgeBotV3:
                 raise ValueError("Missing BINANCE API keys (BINANCE_API_KEY, BINANCE_API_SECRET)")
 
         elif exchange_name == "BACKPACK":
-            base_config.update({
-                "api_key": os.getenv("BACKPACK_API_KEY"),
-                "api_secret": os.getenv("BACKPACK_API_SECRET"),
-            })
-            if not all([base_config.get("api_key"), base_config.get("api_secret")]):
-                raise ValueError("Missing BACKPACK API keys (BACKPACK_API_KEY, BACKPACK_API_SECRET)")
+            # Backpack使用环境变量直接初始化,不需要在config中传递
+            # 只需要确保环境变量存在
+            if not all([os.getenv("BACKPACK_PUBLIC_KEY"), os.getenv("BACKPACK_SECRET_KEY")]):
+                raise ValueError("Missing BACKPACK API keys (BACKPACK_PUBLIC_KEY, BACKPACK_SECRET_KEY)")
 
         else:
             # 其他交易所的通用配置
