@@ -104,10 +104,11 @@ class HedgeBotV3:
         """为指定交易所准备配置"""
         exchange_name = exchange_name.upper()
 
-        # 基础配置
+        # 基础配置 - 所有交易所都需要
         base_config = {
             "ticker": self.symbol,
             "quantity": self.order_quantity,
+            "contract_id": self.symbol,  # 默认contract_id与ticker相同
         }
 
         # 根据交易所类型添加特定配置

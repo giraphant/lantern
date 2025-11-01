@@ -48,8 +48,9 @@ BINANCE_API_KEY=your_api_key
 BINANCE_API_SECRET=your_api_secret
 
 # Backpack API配置 (如果EXCHANGE_A或EXCHANGE_B使用BACKPACK)
+# 注意: SECRET_KEY必须是Base64编码格式
 BACKPACK_PUBLIC_KEY=your_public_key
-BACKPACK_SECRET_KEY=your_secret_key
+BACKPACK_SECRET_KEY=your_base64_encoded_secret_key
 ```
 
 ## 使用示例
